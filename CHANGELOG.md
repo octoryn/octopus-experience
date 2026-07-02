@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.1]
+
+### Docs / packaging
+
+- Corrected `docs/inbound/2026-07-02-…`: it wrongly claimed Blackboard had
+  "rejected and deleted" the export branch. Rewritten as an accurate resolved
+  decision record — the review showed `provenance/0`-as-ingestion leaked PM's
+  ontology into producers; PM accepted it and moved to `events/0` in v0.4;
+  Blackboard's independent v0.2.0 tag and its fate are Blackboard's decision.
+- Excluded `docs/inbound/` (internal memos) from the published npm tarball;
+  added `README.zh-CN.md` and `CHANGELOG.md` to it for parity.
+
 ## [0.4.0]
 
 The release that makes the protocol carry **facts, not meaning**. Reverses the
