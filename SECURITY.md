@@ -3,7 +3,8 @@
 ## Reporting a vulnerability
 
 Please report security issues privately rather than opening a public issue.
-Email the maintainers (see the repository owner on GitHub) with:
+Use GitHub's private vulnerability reporting (the repository's **Security** tab) or
+email **security@octopusos.ai**. Include:
 
 - a description of the issue and its impact,
 - steps to reproduce, and
@@ -24,7 +25,10 @@ Be aware that:
 
 - Node titles, bodies, intents, and evidence refs are stored verbatim. Do not put
   secrets (tokens, keys) into memory records or evidence refs.
-- The Blackboard bridge opens a Blackboard database **read-only**; it never writes
-  to the source board.
+- Cross-project input is a signed `events/0` fact bundle. Its signature is verified
+  before ingestion; an unverifiable bundle is rejected by default, and any evidence
+  from one is inert (it can neither promote nor contradict an edge). A valid
+  signature proves *attribution*, not *authorization* — which issuers to trust is a
+  deployment/governance decision.
 - Memory is an auditable ledger: records are not deleted, only superseded or
   refuted. Treat the store as retained history when handling sensitive content.

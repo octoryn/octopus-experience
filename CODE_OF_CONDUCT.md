@@ -22,8 +22,8 @@ personal or political attacks.
 ## Enforcement
 
 Instances of abusive or otherwise unacceptable behavior may be reported to the
-project maintainers via the repository owner on GitHub. Maintainers will review
-and investigate all complaints and respond as they deem appropriate.
+project maintainers at **conduct@octopusos.ai**. Maintainers will review and
+investigate all complaints and respond as they deem appropriate.
 
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org/),
 version 2.1.

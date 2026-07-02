@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.1]
+
+### Added / changed
+
+- **CI + Release GitHub Actions** (`.github/workflows/`): CI runs typecheck /
+  build / test on push and PR; Release publishes to npm with provenance when a
+  `v*` tag is pushed (uses the `NPM_TOKEN` repo secret).
+- **Contact details**: maintainer Ran Tao <ran@octopusos.ai>; security reports to
+  <security@octopusos.ai> (or GitHub private advisories); conduct to
+  <conduct@octopusos.ai>. `package.json` author updated.
+- Fixed a stale line in `SECURITY.md` that referenced the removed Blackboard
+  bridge; it now describes `events/0` bundle verification.
+
 ## [0.5.0]
 
 ### Changed

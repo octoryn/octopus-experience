@@ -42,3 +42,7 @@ Requires Node ≥ 22.
 
 Open an issue with a minimal repro — ideally a failing test in the style of
 `tests/lifecycle.test.ts`. Security issues: see [SECURITY.md](SECURITY.md).
+
+## Maintainer
+
+Ran Tao — <ran@octopusos.ai>. Conduct concerns: <conduct@octopusos.ai>.
