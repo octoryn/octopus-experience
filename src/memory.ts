@@ -14,13 +14,14 @@ import {
   type LifecycleOptions,
 } from "./lifecycle.js";
 import { reconstructWhy, renderWhy, type WhyOptions, type WhyResult } from "./why.js";
-import { Distiller, type DistillResult, type Trace } from "./distill.js";
+import { interpretEvents, type InterpretResult } from "./distill.js";
 import {
   hashContent,
-  signBundle,
   verifyBundle,
+  PROTOCOL_VERSION,
+  type EventBundle,
+  type FactualEvent,
   type Keypair,
-  type ProvenanceBundle,
 } from "./protocol.js";
 import {
   ask as runAsk,
@@ -246,56 +247,33 @@ export class ProjectMemory {
   }
 
   /**
-   * Ingest a signed Provenance Bundle — the ONLY sanctioned cross-project entry
-   * point. Verifies the signature, stamps every piece of evidence with the issuer
-   * and whether it verified, then applies the proposals and distils the traces.
-   * With `requireSignature`, an unverifiable bundle is rejected outright.
+   * Ingest a signed `events/0` bundle — the ONLY sanctioned cross-project entry
+   * point. Producers send FACTS; Project Memory derives the graph. A bundle in
+   * any other protocol (e.g. a producer-supplied causal graph) is rejected, as
+   * is an unverifiable bundle unless `requireSignature: false` is passed.
    */
   ingestBundle(
-    bundle: ProvenanceBundle,
+    bundle: EventBundle,
     opts?: { requireSignature?: boolean },
-  ): {
-    verified: boolean;
-    issuer: string;
-    reason?: string;
-    remembered: RememberResult;
-    distilled: DistillResult;
-  } {
-    // Fail closed: the sole cross-project entry point rejects unverifiable
-    // bundles unless a caller explicitly opts into unsigned ingestion.
+  ): { verified: boolean; issuer: string; reason?: string; result: InterpretResult } {
+    // Producers may not speak any protocol but facts. A causal-graph bundle
+    // (the retired provenance/0) is rejected outright, signature or not.
+    if (bundle.protocol !== PROTOCOL_VERSION) {
+      throw new Error(
+        `unsupported protocol "${bundle.protocol}": Project Memory ingests only ${PROTOCOL_VERSION} facts, never a producer-supplied graph`,
+      );
+    }
+    // Fail closed on the signature unless a caller explicitly opts out.
     const requireSignature = opts?.requireSignature ?? true;
     const v = verifyBundle(bundle);
     if (requireSignature && !v.valid) {
       throw new Error(`bundle rejected: ${v.reason ?? "invalid signature"}`);
     }
-    const verified = v.valid;
-    const signer = bundle.issuer.id;
-    const at = bundle.issuedAt;
-    const p = bundle.payload;
-
-    const stamp = (n: NodeInput): NodeInput =>
-      n.type === "evidence"
-        ? {
-            ...n,
-            signer,
-            verified,
-            contentHash: n.contentHash ?? hashContent({ kind: n.evidenceKind, ref: n.ref, title: n.title }),
-          }
-        : n;
-
-    const remembered = this.remember({
-      nodes: (p.nodes ?? []).map(stamp),
-      edges: p.edges,
-      evidence: p.evidence,
-      at,
+    const result = interpretEvents(this, bundle.events ?? [], {
+      issuer: bundle.issuer.id,
+      verified: v.valid,
     });
-    const traces: Trace[] = (p.traces ?? []).map((t) => ({
-      ...t,
-      signer,
-      verified: t.verified ?? verified,
-    }));
-    const distilled = this.distill(traces);
-    return { verified, issuer: signer, reason: v.reason, remembered, distilled };
+    return { verified: v.valid, issuer: bundle.issuer.id, reason: v.reason, result };
   }
 
   /** Record that a newer edge (usually a decision) replaces an older one. */
@@ -402,9 +380,12 @@ export class ProjectMemory {
     return renderWhy(this.why(target, opts));
   }
 
-  /** Distill raw observed traces into proposed nodes/edges/evidence. */
-  distill(traces: Trace[]): DistillResult {
-    return new Distiller(this).run(traces);
+  /**
+   * Ingest local, first-party facts (no signature required) and let PM derive the
+   * graph. For cross-project input use `ingestBundle` (signed `events/0`).
+   */
+  ingestEvents(events: FactualEvent[]): InterpretResult {
+    return interpretEvents(this, events, { issuer: "local" });
   }
 
   /** Ranked recall across the graph, each hit annotated with its trust state. */

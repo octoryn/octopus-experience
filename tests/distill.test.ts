@@ -1,89 +1,97 @@
 import { describe, expect, it } from "vitest";
 import { ProjectMemory } from "../src/memory.js";
-import type { Trace } from "../src/distill.js";
+import type { FactualEvent } from "../src/protocol.js";
 
 const T0 = 1_700_000_000_000;
 const fresh = () => new ProjectMemory({ dbPath: ":memory:" }, { clock: () => T0 });
 
-function seedHypothesis(m: ProjectMemory) {
-  // an inferred causal claim with only an aligning commit behind it -> hypothesis
-  m.remember({
-    nodes: [
-      { key: "i", type: "issue", title: "cache miss storms" },
-      { key: "d", type: "decision", title: "add an L2 cache" },
-      { key: "c", type: "evidence", title: "aa11 add l2", evidenceKind: "commit" },
-    ],
-    edges: [{ key: "e", from: "d", to: "i", relation: "addresses", intent: "L2 absorbs the misses" }],
-    evidence: [{ evidence: "c", target: "e", stance: "supports" }],
-  });
-  return m;
-}
+// Facts a producer might emit — no node types, no edges, no stance, no trust.
+const metalFacts: FactualEvent[] = [
+  { kind: "risk", id: "R1", body: { title: "Metal compiler crashes on M1" } },
+  { kind: "decision", id: "D1", refs: { risk: "R1" }, body: { title: "Pad conv weights to 64 bytes", rationale: "misalignment crashes the compiler" } },
+];
 
-describe("distillation — memory as a by-product of work", () => {
-  it("a passing benchmark promotes a hypothesis to trusted", () => {
-    const m = seedHypothesis(fresh());
-    expect(m.edgeState("EDGE-1")).toBe("hypothesis");
-
-    const traces: Trace[] = [
-      { kind: "benchmark", ref: "run-9", title: "hit rate 40%->95%", outcome: "pass", mentions: ["add an L2 cache"] },
-    ];
-    const r = m.distill(traces);
-    expect(m.edgeState("EDGE-1")).toBe("trusted");
-    expect(r.transitions).toContainEqual({ edge: "EDGE-1", from: "hypothesis", to: "trusted" });
+describe("interpretation — facts become the graph (only in PM)", () => {
+  it("derives issue + decision nodes and infers a hypothesis addresses edge", () => {
+    const m = fresh();
+    const r = m.ingestEvents(metalFacts);
+    expect(r.createdNodes).toBe(2);
+    const issue = m.search("Metal compiler", "issue")[0];
+    const decision = m.search("Pad conv weights", "decision")[0];
+    expect(issue && decision).toBeTruthy();
+    const edge = m.outgoingEdges(decision.id, "addresses").find((e) => e.to === issue.id);
+    expect(edge).toBeTruthy();
+    // inferred, defended by nothing yet -> a claim/hypothesis, never trusted
+    expect(m.edgeState(edge!.id)).toBe("claimed");
     m.close();
   });
 
-  it("a failing test refutes / contests the claim", () => {
+  it("a passing benchmark fact promotes the inferred edge to trusted; why walks it", () => {
     const m = fresh();
-    m.remember({
-      nodes: [
-        { key: "i", type: "issue", title: "startup slow" },
-        { key: "d", type: "decision", title: "preload everything" },
-      ],
-      edges: [{ key: "e", from: "d", to: "i", relation: "addresses", intent: "preloading hides latency" }],
-    });
-    // bare claim, no support yet
-    expect(m.edgeState("EDGE-1")).toBe("claimed");
-    m.distill([{ kind: "test", ref: "t1", title: "startup still 4s", outcome: "fail", mentions: ["preload everything"] }]);
-    expect(m.edgeState("EDGE-1")).toBe("refuted");
-    m.close();
-  });
-
-  it("a commit referencing a known issue records observed provenance", () => {
-    const m = fresh();
-    m.remember({ nodes: [{ type: "issue", title: "flaky auth test" }] });
-    const r = m.distill([
-      { kind: "commit", ref: "bb22", title: "stabilize auth test clock", mentions: ["flaky auth test"] },
+    m.ingestEvents([
+      ...metalFacts,
+      { kind: "benchmark", id: "B1", refs: { decision: "D1" }, body: { title: "1.8x, 0 crashes", outcome: "pass" } },
     ]);
-    expect(r.createdEdges).toBe(1);
-    // a task was created and resolves the issue, backed by the commit -> observed
-    const task = m.search("stabilize auth test clock", "task")[0];
+    const decision = m.search("Pad conv weights", "decision")[0];
+    const edge = m.outgoingEdges(decision.id, "addresses")[0];
+    expect(m.edgeState(edge.id)).toBe("trusted");
+    expect(m.explain("Pad conv weights to 64 bytes")).toContain("trusted");
+    m.close();
+  });
+
+  it("a failing test fact refutes the inferred edge", () => {
+    const m = fresh();
+    m.ingestEvents([
+      ...metalFacts,
+      { kind: "test", id: "T1", refs: { risk: "R1" }, body: { title: "still crashes", outcome: "fail" } },
+    ]);
+    const decision = m.search("Pad conv weights", "decision")[0];
+    const edge = m.outgoingEdges(decision.id, "addresses")[0];
+    expect(m.edgeState(edge.id)).toBe("refuted");
+    m.close();
+  });
+
+  it("a commit fact records observed provenance backed by the commit", () => {
+    const m = fresh();
+    m.ingestEvents([
+      ...metalFacts,
+      { kind: "commit", id: "abc123", refs: { risk: "R1" }, body: { title: "pad weights" } },
+    ]);
+    const task = m.search("pad weights", "task")[0];
     expect(task).toBeTruthy();
     const edge = m.outgoingEdges(task.id, "resolves")[0];
     expect(m.edgeState(edge.id)).toBe("observed");
     m.close();
   });
 
-  it("refuses to invent links it cannot ground (no silent fabrication)", () => {
+  it("an unknown kind is captured as evidence, never invented into a claim", () => {
     const m = fresh();
-    const r = m.distill([{ kind: "commit", ref: "c9", title: "touch something unknown", mentions: ["nonexistent topic"] }]);
+    const r = m.ingestEvents([{ kind: "note", id: "n1", body: { title: "MPSGraph compile is 30-40 min" } }]);
     expect(r.createdEdges).toBe(0);
-    expect(r.createdNodes).toBe(0);
-    expect(r.log.join(" ")).toMatch(/skip/);
+    expect(m.search("MPSGraph", "evidence").length).toBe(1);
     m.close();
   });
 
-  it("is idempotent — re-distilling the same traces changes nothing", () => {
-    const m = seedHypothesis(fresh());
-    const traces: Trace[] = [
-      { kind: "benchmark", ref: "run-9", title: "hit rate 40%->95%", outcome: "pass", mentions: ["add an L2 cache"] },
-    ];
-    m.distill(traces);
-    const second = m.distill(traces);
-    expect(second.transitions).toHaveLength(0);
-    expect(second.createdNodes).toBe(0);
-    expect(second.createdEdges).toBe(0);
-    expect(second.attachedEvidence).toBe(0);
+  it("promotes correctly even when the outcome event precedes its decision in the bundle", () => {
+    const m = fresh();
+    // benchmark listed BEFORE the decision/risk it bears on — event order is not causal
+    m.ingestEvents([
+      { kind: "benchmark", id: "B1", refs: { decision: "D1" }, body: { title: "1.8x, 0 crashes", outcome: "pass" } },
+      { kind: "risk", id: "R1", body: { title: "Metal compiler crashes on M1" } },
+      { kind: "decision", id: "D1", refs: { risk: "R1" }, body: { title: "Pad conv weights to 64 bytes", rationale: "alignment" } },
+    ]);
+    const decision = m.search("Pad conv weights", "decision")[0];
+    const edge = m.outgoingEdges(decision.id, "addresses")[0];
+    expect(m.edgeState(edge.id)).toBe("trusted");
+    m.close();
+  });
+
+  it("is idempotent — re-ingesting the same facts changes nothing", () => {
+    const m = fresh();
+    m.ingestEvents(metalFacts);
+    const again = m.ingestEvents(metalFacts);
+    expect(again.createdNodes).toBe(0);
+    expect(again.createdEdges).toBe(0);
     m.close();
   });
 });

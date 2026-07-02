@@ -65,44 +65,51 @@ the result of a `why` query. No knowledge graph, no ontology to learn.
 
 ## Memory as a by-product of work
 
-Knowledge tools die when someone has to feed them. So no one does the writing —
-work does. Agents *propose*, and raw traces from the work itself *decide*:
+Knowledge tools die when someone has to feed them. So no one writes the graph —
+producers report **facts**, and Project Memory derives the meaning:
 
 ```
 $ npm run pipeline    # abridged
 
-agents propose two competing fixes (claims, unproven)
-  cache fix : hypothesis   pool fix : hypothesis
+a producer reports facts (no issues, no decisions-as-graph, no trust)
+  risk       "p99 latency spikes under load"
+  decision   {risk:L1}       "add a read-through cache"
+  decision   {risk:L1}       "raise the connection pool to 500"
+  benchmark  {decision:CACHE} "p99 512ms -> 90ms"       outcome: pass
+  test       {decision:POOL}  "pool exhausted DB connections"  outcome: fail
 
-work traces arrive — the system decides, not the authors
-  EDGE-1: hypothesis -> trusted   (benchmark: p99 512ms -> 90ms)
-  EDGE-2: hypothesis -> stale     (test: pool exhausted DB connections)
+Project Memory derives the graph and computes trust — by itself
+  EDGE-1: claimed -> trusted    (the benchmark defended the cache fix)
+  EDGE-2: claimed -> refuted    (the failing test killed the pool fix)
 
 digest "latency"
   ## What we do (trusted)      • add a read-through cache
-  ## Aging — re-verify         • raise the connection pool to 500
+  ## Dead ends — do NOT retry  • raise the connection pool to 500
   ## Problems seen             • p99 latency spikes under load
 ```
 
-A passing benchmark promoted one fix to `trusted`; a failing test knocked the
-other back — **no human wrote "trusted."** `digest` then materialises the
-lessons, including the dead ends we refuted so they aren't re-walked.
+The producer sent only facts. Project Memory created the issue and decisions,
+inferred the causal edges, and let a passing benchmark promote one fix to
+`trusted` while a failing test refuted the other — **no human, and no producer,
+wrote "trusted."**
 
 ## Composes through protocols, never implementations
 
 > **Independent repositories. Stable protocols. Replaceable implementations.**
 
-Project Memory never reaches into another system's storage or code. The only way
-in is a signed **Provenance Bundle** (`provenance/0`, a JSON wire format — see
-[docs/protocol.md](docs/protocol.md)). Any producer — a CI job, a code host, an
+Project Memory never reaches into another system's storage, code, **or ontology**.
+The only way in is a signed **`events/0`** bundle (a JSON wire format of *facts* —
+see [docs/protocol.md](docs/protocol.md)). Any producer — a CI job, a code host, an
 agent, or [octopus-blackboard](https://github.com/octoryn/octopus-blackboard) —
-emits one; Project Memory verifies the signature and ingests it. Assume Blackboard
-doesn't exist and Project Memory still makes complete sense.
+emits facts; Project Memory verifies the signature and ingests them. Assume
+Blackboard doesn't exist and Project Memory still makes complete sense.
 
-A bundle carries **evidence, never trust.** Signatures make evidence
-tamper-evident and *attributable*; trust is still computed here, by the
-constitution. In particular a human **attestation only defends an edge if it is
-cryptographically signed** — an unsigned vouch is just a claim anyone could forge.
+A bundle carries **facts, never meaning.** A producer reports what happened —
+`{ kind, refs, body }` — and never sends an issue, a decision, a causal edge, a
+`stance`, or a trust level. **Project Memory alone** turns facts into that graph
+and computes trust, by the constitution. (This reverses the earlier `provenance/0`
+graph bundle, which leaked PM's ontology onto the wire — see
+[ADR 0001](docs/adr/0001-events-not-ontology.md).)
 
 ```bash
 node dist/cli.js keygen ci-bot            # -> ci-bot.actor.json (Ed25519)
@@ -147,8 +154,8 @@ node dist/cli.js ingest-bundle bundle.json
 Tools:
 
 - `remember` — record work and propose causal edges
-- `observe` — distil raw work traces into memory automatically
-- `ingest_bundle` — ingest a signed Provenance Bundle (the open cross-project protocol)
+- `observe` — record local first-party facts (events); PM derives the graph
+- `ingest_bundle` — ingest a signed `events/0` fact bundle (the only cross-project protocol)
 - `add_evidence` / `attest` — defend or contest an edge
 - `verify` — revive a stale prescription
 - `why` — reconstruct a causal chain
@@ -177,12 +184,13 @@ console.log(m.explain("Shard the KV cache lock")); // -> trusted causal chain
 
 ## Status
 
-v0.3 — the core constitution (lifecycle engine, `why`), the distillation layer,
-`ask`/`digest`, idempotent ingestion, and the open **Provenance Bundle protocol**
-with Ed25519-signed, tamper-evident evidence. Tested (43 cases) and adversarially
-reviewed three times. Roadmap (naturally commercial, built *on* the protocol):
-cross-project trust registries and key rotation, distributed/federated
-verification, enterprise governance & compliance, and a hosted multi-project mode.
+v0.4 — the core constitution (lifecycle engine, `why`), interpretation (`ask` /
+`digest`), idempotent ingestion, and the open **`events/0`** fact protocol with
+Ed25519-signed, tamper-evident events. Producers send facts; Project Memory alone
+derives the graph (see [ADR 0001](docs/adr/0001-events-not-ontology.md)). Tested
+(44 cases) and adversarially reviewed. Roadmap (naturally commercial, built *on*
+the protocol): cross-project trust registries and key rotation, distributed /
+federated verification, enterprise governance & compliance, hosted multi-project.
 
 ## License
 

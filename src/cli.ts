@@ -3,13 +3,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
 import { ProjectMemory } from "./memory.js";
-import { generateActor, type ProvenanceBundle } from "./protocol.js";
+import { generateActor, type EventBundle } from "./protocol.js";
 
 const program = new Command();
 program
   .name("octomem")
   .description("Project Memory — ask why, not just what")
-  .version("0.3.0");
+  .version("0.4.0");
 
 program
   .command("why <target>")
@@ -87,10 +87,10 @@ program
 
 program
   .command("ingest-bundle <file>")
-  .description("ingest a signed Provenance Bundle (the open cross-project protocol)")
-  .option("--allow-unsigned", "accept an unverifiable bundle (its evidence stays inert for trust)")
+  .description("ingest a signed events/0 fact bundle (the only cross-project protocol)")
+  .option("--allow-unsigned", "accept an unverifiable bundle (facts recorded; nothing trusted)")
   .action((file: string, opts: { allowUnsigned?: boolean }) => {
-    const bundle = JSON.parse(readFileSync(file, "utf8")) as ProvenanceBundle;
+    const bundle = JSON.parse(readFileSync(file, "utf8")) as EventBundle;
     const m = new ProjectMemory();
     try {
       const r = m.ingestBundle(bundle, { requireSignature: !opts.allowUnsigned });
@@ -98,10 +98,10 @@ program
         `ingested from ${r.issuer} — verified:${r.verified}${r.reason ? ` (${r.reason})` : ""}`,
       );
       console.log(
-        `  nodes:${r.remembered.nodes.length} edges:${r.remembered.edges.length} ` +
-          `distilled(nodes:${r.distilled.createdNodes} edges:${r.distilled.createdEdges} transitions:${r.distilled.transitions.length})`,
+        `  derived nodes:${r.result.createdNodes} edges:${r.result.createdEdges} ` +
+          `evidence:${r.result.attachedEvidence} transitions:${r.result.transitions.length}`,
       );
-      for (const line of r.distilled.log) console.log(`  ${line}`);
+      for (const line of r.result.log) console.log(`  ${line}`);
     } finally {
       m.close();
     }

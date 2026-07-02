@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0]
+
+The release that makes the protocol carry **facts, not meaning**. Reverses the
+`provenance/0` graph bundle after an independent review ("capture, don't
+interpret"). See [ADR 0001](docs/adr/0001-events-not-ontology.md).
+
+### Changed (breaking)
+
+- **New ingestion protocol `events/0`** — the only external entry point. Producers
+  send signed *factual events* `{ kind, id?, at?, actor?, refs?, contentHash?,
+  body? }`. No node types, edges, relations, `stance`, or trust on the wire.
+- **`provenance/0` graph bundle retired** and rejected on sight — `ingestBundle`
+  throws on any non-`events/0` protocol. No compatibility path kept (deletion over
+  compatibility).
+- **Interpretation moved entirely into Project Memory** (`interpretEvents` in
+  `src/distill.ts`): facts → issues/decisions/evidence + inferred edges at the
+  `observed`/`hypothesis` tier. Producers never infer.
+- The signing envelope now covers the **whole** bundle including `protocol`.
+- API: `ingestBundle(EventBundle)`, `ingestEvents(FactualEvent[])` (local, unsigned);
+  removed the graph-bundle `nodes/edges/evidence` payload, `Distiller`, and `Trace`.
+
+### Unchanged
+
+- The constitution (trust computed not stored; facts persist; prescriptions decay;
+  no evidence, no trusted edge), `why`/`ask`/`digest`, the internal
+  issue/decision/evidence model (internal only, never on the wire), and the crypto.
+
 ## [0.3.0]
 
 The release that makes cooperation a **protocol**, not a coupling.

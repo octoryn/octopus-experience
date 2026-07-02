@@ -19,8 +19,8 @@ export {
 } from "./lifecycle.js";
 export { reconstructWhy, renderWhy } from "./why.js";
 export type { WhyResult, WhyStep, WhyOptions } from "./why.js";
-export { Distiller } from "./distill.js";
-export type { Trace, DistillResult } from "./distill.js";
+export { interpretEvents } from "./distill.js";
+export type { InterpretResult, InterpretOptions } from "./distill.js";
 export { ask, renderAsk, digest, renderDigest } from "./query.js";
 export type { AskResult, AskHit, Digest } from "./query.js";
 export {
@@ -33,8 +33,8 @@ export {
 } from "./protocol.js";
 export type {
   Actor,
-  BundlePayload,
-  ProvenanceBundle,
+  FactualEvent,
+  EventBundle,
   Keypair,
   VerifyResult,
 } from "./protocol.js";

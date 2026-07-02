@@ -1,104 +1,82 @@
-# Provenance Bundle Protocol (`provenance/0`)
+# The `events/0` protocol
 
-This is a **wire format**, not a library. Any system that wants to contribute to a
-Project Memory graph — a CI job, a code host, an issue tracker, an agent, or
-[octopus-blackboard](https://github.com/octoryn/octopus-blackboard) — emits a
-signed JSON **bundle** conforming to this document. Producers and consumers share
-*this spec*, never code.
+The only external way into Project Memory. A producer emits a **signed bundle of
+factual events**; Project Memory derives everything else.
 
-> **Independent repositories. Stable protocols. Replaceable implementations.**
-> Projects compose through protocols, never through implementations.
+> **Protocols transport facts. Consumers derive meaning.**
+> Independent repositories. Stable protocols. Replaceable implementations.
 
-## The one rule
-
-A bundle carries **evidence and proposals — never trust.** Trust is computed by
-each consumer from the evidence, under its own policy. Signatures make evidence
-tamper-evident and *attributable*; they do not make it *true*. Project Memory
-computes causal trust; an audit system computes compliance; an analytics system
-computes metrics — all from the same bundle, none coupled to the others.
+A producer captures *what happened*. It never sends issues, decisions, evidence
+nodes, causal edges, `stance`, or trust — those are meaning, and meaning is the
+consumer's. See [adr/0001-events-not-ontology.md](adr/0001-events-not-ontology.md)
+for why this replaced the earlier graph bundle.
 
 ## Document shape
 
 ```jsonc
 {
-  "protocol": "provenance/0",
-  "issuer": {
-    "id": "ci-bot",                 // stable actor handle
-    "publicKey": "<base64 DER SPKI Ed25519 public key>"
-  },
-  "issuedAt": 1700000000000,        // epoch ms
-  "payload": {
-    // structured proposals (all optional):
-    "nodes":    [ /* NodeInput  */ ],
-    "edges":    [ /* EdgeInput  */ ],
-    "evidence": [ /* EvidenceInput */ ],
-    // and/or outcome traces the consumer can distil:
-    "traces":   [ /* Trace */ ]
-  },
-  "signature": "<base64 Ed25519 signature>"
+  "protocol": "events/0",
+  "issuer":   { "id": "ci-bot", "publicKey": "<base64 DER SPKI Ed25519>" },
+  "issuedAt": 1700000000000,
+  "events": [
+    {
+      "kind": "risk",              // producer-native, opaque to the protocol
+      "id": "R1",                  // producer's id for the thing (drives idempotency)
+      "at": 1700000000000,
+      "actor": "claude",
+      "refs": { "risk": "R1" },    // opaque typed pointers (commit sha, task key, ...)
+      "contentHash": "…",          // optional sha256 of the artifact
+      "body": { "title": "OOM under burst" }   // opaque producer payload
+    }
+  ],
+  "signature": "<base64 Ed25519 over canonicalize({protocol, issuer, issuedAt, events})>"
 }
 ```
 
-### Nodes / edges / evidence / traces
+There is deliberately **no** field for a node type, an edge, a relation, a
+stance, or a trust level. If a producer needs one of those to express itself, the
+protocol is doing its job by refusing.
 
-These mirror Project Memory's ingestion inputs, but they are generic and carry no
-trust:
+## What Project Memory does with the facts (not the producer)
 
-- **node**: `{ key?, type: "issue"|"decision"|"task"|"evidence", title, body?, externalKey?, evidenceKind?, ref? }`
-- **edge**: `{ from, to, relation: "resolves"|"addresses"|"implements"|"supersedes"|"relates", intent?, source? }`
-- **evidence link**: `{ evidence, target, targetType?, stance?: "supports"|"contradicts" }`
-- **trace** (outcome signal): `{ kind, ref?, title, mentions?, outcome?: "pass"|"fail", targetEdge? }`
+Interpretation lives entirely in the consumer ([`src/distill.ts`](../src/distill.ts)).
+PM maps a producer-native `kind` to its own concepts and infers edges, all at the
+`observed` / `hypothesis` tier — never `trusted`:
 
-`externalKey` is the producer's stable id for a node (e.g. `gh:issue:12`,
-`bb:decision:5`). It makes ingestion **idempotent**: re-sending a bundle updates
-nothing.
+- kinds like `risk`/`issue`/`bug` → an **issue** node
+- kinds like `decision`/`adr` → a **decision** node (a referenced issue → an
+  *inferred* `addresses` edge, carrying the decision's rationale as intent)
+- kinds like `commit`/`task`/`pr` → a **task** node + `observed` provenance edges
+- kinds like `test`/`benchmark`/`review` → **evidence**, with `outcome`
+  pass/fail becoming supporting/contradicting evidence — which may then promote a
+  hypothesis to `trusted`, or refute it
+- anything else → captured as evidence for the record, never invented into a claim
+
+The mapping is PM's, lives in PM, and grows without any producer changing.
 
 ## Signing
 
-1. Build `payload`.
-2. Compute the signing input: `canonicalize({ issuer, issuedAt, payload })`, where
-   `canonicalize` is `JSON.stringify` with **object keys sorted recursively**.
-3. `signature = base64( Ed25519_sign(privateKey, signingInput) )`.
-
-Verification recomputes the signing input and checks the signature against
-`issuer.publicKey`. Any change to issuer, timestamp, or payload invalidates it —
-so does claiming a different `publicKey`.
-
-Reference implementation: [`src/protocol.ts`](../src/protocol.ts) (Node `crypto`,
-no third-party dependency).
+`signature = base64(Ed25519_sign(privateKey, canonicalize({protocol, issuer, issuedAt, events})))`,
+where `canonicalize` is `JSON.stringify` with object keys sorted recursively. The
+signed input is the **whole envelope, including the `protocol` tag**, so the tag
+itself cannot be swapped. Reference implementation: [`src/protocol.ts`](../src/protocol.ts).
 
 ## Consumer obligations
 
-- **Fail closed.** Reject a bundle whose signature does not verify by default.
-  Project Memory's `ingestBundle` requires a valid signature unless the caller
-  explicitly opts into unsigned ingestion.
-- **Unverified evidence is inert.** If an unsigned/unverifiable bundle *is*
-  ingested, its evidence is recorded (for audit) but MUST NOT affect trust —
-  it can neither defend an edge into `trusted` nor contradict one into
-  `stale`/`refuted`. Project Memory stamps such evidence `verified: false` and
-  the lifecycle engine ignores it. (Locally produced evidence — never wrapped in
-  a bundle — has no `verified` flag and is trusted implicitly; that is a local
-  trust domain, not wire input.)
-- **`verified` means *attributable*, not *authorized*.** A valid signature only
-  proves the bundle was signed by the key it carries and wasn't tampered with. It
-  does NOT mean the issuer is trustworthy — anyone can self-sign. Deciding *which
-  issuers to believe* (key registries, rotation, quorum, org policy) is out of
-  scope for this protocol and belongs to a governance/trust layer built on top.
-- **Never elevate trust from the wire.** A bundle cannot declare an edge
-  `trusted`. It can only supply evidence; the consumer's own rules decide.
-- **Idempotency via `externalKey`.** Consumers dedupe on it.
-- **Canonical inputs only.** Do not include object keys whose value is
-  `undefined` — `canonicalize` drops them, so `{a: undefined}` and `{}` hash and
-  sign identically. Omit absent fields rather than setting them `undefined`.
-
-## Versioning
-
-The `protocol` field is `provenance/<major>`. A consumer MUST reject a major it
-does not understand. New optional fields are minor, backward-compatible additions.
+- **Reject anything that isn't `events/0`.** A producer-supplied causal graph
+  (the retired `provenance/0`) is refused outright.
+- **Fail closed.** Reject a bundle whose signature does not verify, unless a
+  caller explicitly opts into unsigned ingestion.
+- **Unverified facts are inert.** If an unverifiable bundle is ingested anyway,
+  its derived evidence is recorded but cannot promote or contradict any edge.
+- **`verified` means *attributable*, not *authorized*.** A valid signature proves
+  who signed and that nothing was tampered — not that they should be believed.
+  Deciding which issuers to trust is a governance layer above this protocol.
+- **Canonical inputs only.** Omit absent fields; do not set object keys to
+  `undefined` (canonicalization drops them).
 
 ## Non-goals
 
-No transport is mandated (a file, an MCP resource, stdout, HTTP all work). No key
-distribution or trust-registry is specified here — deciding *which* issuers to
-trust is a deployment/governance concern, deliberately left to the consumer and to
-commercial layers built on top.
+No transport is mandated (file, MCP resource, stdout, HTTP). No key distribution
+or trust registry — those are deployment/governance concerns, deliberately out of
+scope.

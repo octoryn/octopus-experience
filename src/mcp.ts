@@ -24,7 +24,7 @@ function text(s: string) {
 }
 
 export function buildServer(memory: ProjectMemory): McpServer {
-  const server = new McpServer({ name: "octopus-experience", version: "0.3.0" });
+  const server = new McpServer({ name: "octopus-experience", version: "0.4.0" });
 
   server.tool(
     "remember",
@@ -122,7 +122,7 @@ export function buildServer(memory: ProjectMemory): McpServer {
 
   server.tool(
     "attest",
-    "Record a human vouch for an edge, attributed to `actor`. Over MCP this is an UNSIGNED attestation: it is logged as a claim but does NOT by itself promote the edge to trusted, because it isn't cryptographically attributable. A signed, trust-promoting attestation must arrive via a signed Provenance Bundle (ingest_bundle).",
+    "Record a human vouch for an edge, attributed to `actor`. Over MCP this is an UNSIGNED attestation: it is logged as a claim but does NOT by itself promote the edge to trusted, because it isn't cryptographically attributable. A signed, trust-promoting attestation must arrive as a signed `events/0` event (ingest_bundle).",
     {
       edge: z.string(),
       actor: z.string(),
@@ -141,22 +141,21 @@ export function buildServer(memory: ProjectMemory): McpServer {
 
   server.tool(
     "observe",
-    "Distill raw work traces (commits, tests, benchmarks, reviews) into memory automatically. Commits/PRs that reference known nodes create observed provenance edges; test/benchmark/review outcomes attach as supporting or contradicting evidence, promoting hypotheses to trusted or refuting them. Nothing is fabricated as trusted. This is how memory accrues without anyone writing it by hand.",
+    "Record local first-party FACTS and let Project Memory derive the graph. An event is just what happened: a producer-native `kind` (e.g. \"commit\", \"review\", \"risk\"), plus optional id/refs/body/actor. You never send a node type, a causal edge, a stance, or a trust level — Project Memory alone turns facts into issues/decisions/evidence and infers edges. For signed cross-project input use ingest_bundle.",
     {
-      traces: z.array(
+      events: z.array(
         z.object({
-          kind: z.enum(evidenceKinds),
-          ref: z.string().optional(),
-          title: z.string(),
+          kind: z.string(),
+          id: z.string().optional(),
           actor: z.string().optional(),
-          mentions: z.array(z.string()).optional(),
-          outcome: z.enum(["pass", "fail"]).optional(),
-          targetEdge: z.string().optional(),
+          refs: z.record(z.string(), z.string()).optional(),
+          contentHash: z.string().optional(),
+          body: z.record(z.string(), z.unknown()).optional(),
         }),
       ),
     },
-    async ({ traces }) => {
-      const r = memory.distill(traces);
+    async ({ events }) => {
+      const r = memory.ingestEvents(events);
       const head =
         `nodes:${r.createdNodes} edges:${r.createdEdges} evidence:${r.attachedEvidence} ` +
         `transitions:${r.transitions.length}`;
@@ -180,13 +179,22 @@ export function buildServer(memory: ProjectMemory): McpServer {
 
   server.tool(
     "ingest_bundle",
-    "Ingest a signed Provenance Bundle — the open, cross-project protocol for feeding memory. Rejects bundles whose signature does not verify (pass requireSignature:false to accept an unsigned bundle, whose evidence then stays INERT for trust). Evidence is stamped with the issuer; nothing is trusted merely because it was ingested. This is how any external system (a CI job, a code host, another agent) contributes evidence without coupling to Project Memory's internals.",
+    "Ingest a signed `events/0` bundle — the only cross-project entry point. A producer sends FACTS (events); Project Memory derives issues/decisions/evidence and infers edges itself. A bundle in any other protocol (e.g. a producer-supplied causal graph) is rejected, as is an unverifiable bundle unless requireSignature:false. Nothing is trusted merely because it was ingested.",
     {
       bundle: z.object({
         protocol: z.string(),
         issuer: z.object({ id: z.string(), publicKey: z.string() }),
         issuedAt: z.number(),
-        payload: z.record(z.string(), z.unknown()),
+        events: z.array(
+          z.object({
+            kind: z.string(),
+            id: z.string().optional(),
+            actor: z.string().optional(),
+            refs: z.record(z.string(), z.string()).optional(),
+            contentHash: z.string().optional(),
+            body: z.record(z.string(), z.unknown()).optional(),
+          }),
+        ),
         signature: z.string().optional(),
       }),
       requireSignature: z.boolean().optional(),
@@ -195,8 +203,7 @@ export function buildServer(memory: ProjectMemory): McpServer {
       const r = memory.ingestBundle(bundle as never, { requireSignature });
       return text(
         `from ${r.issuer} verified:${r.verified}${r.reason ? ` (${r.reason})` : ""} — ` +
-          `nodes:${r.remembered.nodes.length} edges:${r.remembered.edges.length} ` +
-          `transitions:${r.distilled.transitions.length}`,
+          `nodes:${r.result.createdNodes} edges:${r.result.createdEdges} transitions:${r.result.transitions.length}`,
       );
     },
   );

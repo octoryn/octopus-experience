@@ -1,188 +1,215 @@
 /**
- * Distillation — the layer that makes memory a *by-product of work*.
+ * Distillation — Project Memory's interpreter. This is the ONLY place meaning is
+ * assigned. Producers hand over `events/0` facts (see protocol.ts); here, and
+ * only here, do facts become issues, decisions, evidence, and (hypothesis-tier)
+ * causal edges. Producers never express any of that.
  *
- * Agents (or the Blackboard bridge) hand the distiller raw observed traces:
- * commits, tests, benchmarks, reviews, messages. The distiller proposes nodes
- * and edges from them — but ONLY ever at the `observed` / `hypothesis` tier,
- * plus supporting/contradicting evidence. It never fabricates a `trusted` edge.
+ * Everything produced starts at `observed` / `hypothesis` — never `trusted`.
  * Trust is still earned the one way it can be: defending evidence backing a
- * stated intent. So distillation is "the agent proposes, the system proves" made
- * automatic.
- *
- * Every rule is transparent: it logs what it matched and, crucially, what it
- * SKIPPED (an unresolved mention is never silently turned into a fact). Noise is
- * worse than nothing, so the distiller refuses to invent links it can't ground.
+ * stated intent, judged by the constitution (lifecycle.ts).
  */
 import type { ProjectMemory } from "./memory.js";
-import type { EdgeState, EvidenceKind, EvidenceStance, MemoryNode } from "./types.js";
+import type { FactualEvent } from "./protocol.js";
+import type { EdgeState, EvidenceKind, MemoryNode, NodeType } from "./types.js";
 
-export interface Trace {
-  /** the artifact kind — commit/test/benchmark/pr/review/message/session */
-  kind: EvidenceKind;
-  /** stable ref (sha, PR url, run id); used to make the evidence idempotent */
-  ref?: string;
-  /** commit message, test name, review summary, ... */
-  title: string;
-  actor?: string;
-  at?: number;
-  /** ids or text of existing nodes this trace is about (e.g. "ISSUE-1", "metal crash") */
-  mentions?: string[];
-  /** for test/benchmark/review: pass/approve vs fail/reject */
-  outcome?: "pass" | "fail";
-  /** attach directly to a specific edge instead of resolving via mentions */
-  targetEdge?: string;
-  /** protocol provenance, set when a trace arrives inside a signed bundle */
-  signer?: string;
-  verified?: boolean;
-  contentHash?: string;
-}
-
-export interface DistillResult {
+export interface InterpretResult {
   createdNodes: number;
   createdEdges: number;
   attachedEvidence: number;
-  /** edges whose state moved as a result (e.g. hypothesis -> trusted, -> refuted) */
   transitions: Array<{ edge: string; from: EdgeState; to: EdgeState }>;
-  /** human-readable log — what each trace did, and what it skipped and why */
   log: string[];
 }
 
-const MECHANISM_OUTCOME: Record<"pass" | "fail", EvidenceStance> = {
-  pass: "supports",
-  fail: "contradicts",
-};
+export interface InterpretOptions {
+  /** producer identity (namespaces derived ids so producers can't collide) */
+  issuer?: string;
+  /** did the event bundle's signature verify? stamped onto derived evidence */
+  verified?: boolean;
+}
 
-export class Distiller {
-  constructor(private readonly memory: ProjectMemory) {}
+// Which producer-native kinds map to which Project-Memory concept. This mapping
+// is PM's, lives in PM, and can grow without any producer changing.
+const ISSUE_KIND = /risk|issue|bug|incident|defect|problem|vuln/i;
+const DECISION_KIND = /decision|adr|rationale|choice|chose|policy/i;
+const OUTCOME_KIND = /test|benchmark|bench|perf|review|ci|check|verif|audit/i;
+const TASK_KIND = /task|commit|pr|pull|patch|change|work|merge|fix/i;
 
-  run(traces: Trace[]): DistillResult {
-    const result: DistillResult = {
-      createdNodes: 0,
-      createdEdges: 0,
-      attachedEvidence: 0,
-      transitions: [],
-      log: [],
-    };
-    for (const trace of traces) {
-      if (trace.outcome || trace.targetEdge) this.outcomeRule(trace, result);
-      else this.provenanceRule(trace, result);
-    }
-    return result;
-  }
+// Ref keys a producer might use to point at each concept.
+const ISSUE_REFS = ["issue", "risk", "bug", "incident", "defect"];
+const DECISION_REFS = ["decision", "adr"];
 
-  /**
-   * A test / benchmark / review outcome becomes supporting or contradicting
-   * evidence on the edges it bears on — the rule that actually promotes a
-   * hypothesis to trusted, or refutes a wrong idea.
-   */
-  private outcomeRule(trace: Trace, r: DistillResult): void {
-    const stance = trace.outcome ? MECHANISM_OUTCOME[trace.outcome] : "supports";
-    const targets = this.resolveOutcomeTargets(trace);
-    if (targets.length === 0) {
-      r.log.push(`skip ${trace.kind} "${trace.title}": no edge to attach to`);
-      return;
-    }
-    const ev = this.ensureEvidence(trace, r);
-    for (const edgeId of targets) {
-      const before = this.memory.edgeState(edgeId, trace.at);
-      const isNew = !this.memory.hasEvidenceLink(ev.id, edgeId, stance);
-      const after = this.memory.addEvidence(
-        { evidence: ev.id, target: edgeId, targetType: "edge", stance, actor: trace.actor },
-        trace.at,
-      );
-      if (isNew) r.attachedEvidence += 1;
-      if (after && after !== before) {
-        r.transitions.push({ edge: edgeId, from: before, to: after });
-        r.log.push(`${edgeId}: ${before} -> ${after}  (${stance} ${trace.kind})`);
-      }
-    }
-  }
+type Concept = "issue" | "decision" | "task" | "outcome" | "note";
 
-  /**
-   * A commit / PR that references an issue or a decision records that work
-   * happened: a task node plus an `observed` provenance edge, grounded by the
-   * commit itself. No intent is invented — provenance is fact, not a causal claim.
-   */
-  private provenanceRule(trace: Trace, r: DistillResult): void {
-    // Only issue/decision/task nodes can anchor a provenance edge; a mention that
-    // resolves to an evidence artifact (or nothing) is not something to build on.
-    const refs = (trace.mentions ?? [])
-      .map((m) => this.resolveNode(m))
-      .filter((n): n is MemoryNode => Boolean(n) && n!.type !== "evidence");
-    if (refs.length === 0) {
-      r.log.push(`skip ${trace.kind} "${trace.title}": nothing it references is known yet`);
-      return;
-    }
-    const taskKey = trace.ref ? `task:${trace.ref}` : `task:${trace.title}`;
-    const existedBefore = Boolean(this.memory.getNodeByExternalKey(taskKey));
-    const task = this.memory.addNode(
-      { type: "task", title: trace.title, externalKey: taskKey, actor: trace.actor },
-      trace.at,
-    );
-    if (!existedBefore) r.createdNodes += 1;
+function conceptOf(kind: string): Concept {
+  if (ISSUE_KIND.test(kind)) return "issue";
+  if (DECISION_KIND.test(kind)) return "decision";
+  if (OUTCOME_KIND.test(kind)) return "outcome";
+  if (TASK_KIND.test(kind)) return "task";
+  return "note";
+}
 
-    const ev = this.ensureEvidence(trace, r);
-    for (const ref of refs) {
-      const relation = ref.type === "decision" ? "implements" : "resolves";
-      const before = this.memory.outgoingEdges(task.id, relation).some((e) => e.to === ref.id);
-      const edge = this.memory.addEdge(
-        { from: task.id, to: ref.id, relation, source: "observed", actor: trace.actor },
-        trace.at,
-      );
-      if (!before) r.createdEdges += 1;
-      const newLink = !this.memory.hasEvidenceLink(ev.id, edge.id, "supports");
-      this.memory.addEvidence(
-        { evidence: ev.id, target: edge.id, targetType: "edge", stance: "supports", actor: trace.actor },
-        trace.at,
-      );
-      if (newLink) r.attachedEvidence += 1;
-      r.log.push(`${task.id} -${relation}-> ${ref.id}  [${this.memory.edgeState(edge.id, trace.at)}]`);
-    }
-  }
+function evidenceKindOf(kind: string): EvidenceKind {
+  const k = kind.toLowerCase();
+  if (/benchmark|bench|perf/.test(k)) return "benchmark";
+  if (/review/.test(k)) return "review";
+  if (/test|ci|check|verif|audit/.test(k)) return "test";
+  if (/commit|patch|fix/.test(k)) return "commit";
+  if (/pr|pull|merge/.test(k)) return "pr";
+  if (/session/.test(k)) return "session";
+  if (/attest|vouch/.test(k)) return "attestation";
+  return "message";
+}
 
-  // ---- helpers ------------------------------------------------------------
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+function title(e: FactualEvent): string {
+  const b = e.body ?? {};
+  return str(b.title) ?? str(b.summary) ?? str(b.name) ?? e.id ?? e.kind;
+}
+function stanceOf(outcome: unknown): "supports" | "contradicts" {
+  const o = String(outcome ?? "").toLowerCase();
+  if (/fail|reject|changes-requested|error|regress|broke|worse/.test(o)) return "contradicts";
+  return "supports";
+}
 
-  private resolveOutcomeTargets(trace: Trace): string[] {
-    if (trace.targetEdge) return [trace.targetEdge];
-    const out = new Set<string>();
-    for (const m of trace.mentions ?? []) {
-      const node = this.resolveNode(m);
-      if (!node) continue;
-      if (node.type === "decision") {
-        for (const e of this.memory.outgoingEdges(node.id, "addresses")) out.add(e.id);
-      } else if (node.type === "issue") {
-        for (const e of this.memory.incomingEdges(node.id, "addresses")) out.add(e.id);
-      }
-    }
-    return [...out];
-  }
+/** The value that identifies the concept-node an event is about, or references. */
+function identity(e: FactualEvent, concept: "issue" | "decision" | "task"): string | undefined {
+  const refs = e.refs ?? {};
+  const keys = concept === "issue" ? ISSUE_REFS : concept === "decision" ? DECISION_REFS : ["task", "commit", "pr", "change", "patch"];
+  for (const k of keys) if (str(refs[k])) return refs[k];
+  return e.id ?? e.contentHash;
+}
 
-  /** Resolve a mention to an existing node — never invents one. */
-  private resolveNode(mention: string): MemoryNode | undefined {
-    const direct = this.memory.getNode(mention);
-    if (direct) return direct;
-    const hits = this.memory.search(mention);
-    return hits.find((n) => n.type !== "evidence") ?? hits[0];
-  }
+export function interpretEvents(
+  memory: ProjectMemory,
+  events: FactualEvent[],
+  opts: InterpretOptions = {},
+): InterpretResult {
+  const ns = opts.issuer ?? "local";
+  const r: InterpretResult = { createdNodes: 0, createdEdges: 0, attachedEvidence: 0, transitions: [], log: [] };
+  const ext = (concept: string, id: string): string => `${ns}/${concept}:${id}`;
 
-  private ensureEvidence(trace: Trace, r: DistillResult): MemoryNode {
-    const key = `ev:${trace.kind}:${trace.ref ?? trace.title}`;
-    const existed = Boolean(this.memory.getNodeByExternalKey(key));
-    const node = this.memory.addNode(
-      {
-        type: "evidence",
-        title: trace.title,
-        evidenceKind: trace.kind as EvidenceKind,
-        ref: trace.ref,
-        externalKey: key,
-        actor: trace.actor,
-        signer: trace.signer,
-        verified: trace.verified,
-        contentHash: trace.contentHash,
-      },
-      trace.at,
-    );
+  const ensureNode = (
+    type: NodeType,
+    externalKey: string,
+    fields: { title: string; body?: string; evidenceKind?: EvidenceKind; ref?: string; signer?: string; verified?: boolean },
+    at?: number,
+  ): MemoryNode => {
+    const existed = Boolean(memory.getNodeByExternalKey(externalKey));
+    const node = memory.addNode({ type, externalKey, ...fields }, at);
     if (!existed) r.createdNodes += 1;
     return node;
+  };
+
+  // PASS 1 — create the primary concept node each event is *about*. No edges yet,
+  // so cross-references resolve regardless of event order.
+  for (const e of events) {
+    const c = conceptOf(e.kind);
+    if (c === "outcome" || c === "note") continue;
+    const id = identity(e, c);
+    if (!id) continue;
+    if (c === "issue") ensureNode("issue", ext("issue", id), { title: title(e), body: str(e.body?.detail) ?? "" }, e.at);
+    else if (c === "decision") ensureNode("decision", ext("decision", id), { title: title(e), body: str(e.body?.rationale) ?? str(e.body?.why) ?? "" }, e.at);
+    else ensureNode("task", ext("task", id), { title: title(e), body: str(e.body?.detail) ?? "" }, e.at);
   }
+
+  // PASS 2 — infer edges from refs, and fold outcome/note events into evidence.
+  const evFor = (e: FactualEvent): MemoryNode => {
+    const kind = evidenceKindOf(e.kind);
+    const key = ext(`ev:${kind}`, e.id ?? e.contentHash ?? title(e));
+    return ensureNode(
+      "evidence",
+      key,
+      { title: title(e), evidenceKind: kind, ref: e.refs?.commit ?? e.refs?.pr ?? e.contentHash, signer: opts.issuer, verified: opts.verified },
+      e.at,
+    );
+  };
+  const attach = (evId: string, edgeId: string, stance: "supports" | "contradicts", e: FactualEvent): void => {
+    const before = memory.edgeState(edgeId, e.at);
+    const isNew = !memory.hasEvidenceLink(evId, edgeId, stance);
+    const after = memory.addEvidence({ evidence: evId, target: edgeId, targetType: "edge", stance, actor: opts.issuer }, e.at);
+    if (isNew) r.attachedEvidence += 1;
+    if (after && after !== before) {
+      r.transitions.push({ edge: edgeId, from: before, to: after });
+      r.log.push(`${edgeId}: ${before} -> ${after} (${stance} ${e.kind})`);
+    }
+  };
+  const addInferredEdge = (from: string, to: string, relation: "addresses" | "resolves" | "implements", intent: string | undefined, source: "observed" | "inferred", e: FactualEvent): string => {
+    const existed = memory.outgoingEdges(from, relation).some((x) => x.to === to);
+    const edge = memory.addEdge({ from, to, relation, intent, source }, e.at);
+    if (!existed) r.createdEdges += 1;
+    return edge.id;
+  };
+
+  const refsOf = (e: FactualEvent) => {
+    const refs = e.refs ?? {};
+    return {
+      issueRef: ISSUE_REFS.map((k) => refs[k]).find(Boolean),
+      decisionRef: DECISION_REFS.map((k) => refs[k]).find(Boolean),
+    };
+  };
+
+  // PASS 2a — create every inferred edge from decision/task events, so that
+  // outcome events (pass 2b) can bear on them regardless of event order.
+  for (const e of events) {
+    const c = conceptOf(e.kind);
+    const { issueRef, decisionRef } = refsOf(e);
+    if (c === "decision") {
+      const dId = identity(e, "decision");
+      const decision = dId && memory.getNodeByExternalKey(ext("decision", dId));
+      if (decision && issueRef) {
+        const issue = memory.getNodeByExternalKey(ext("issue", issueRef));
+        if (issue) {
+          const intent = str(e.body?.rationale) ?? str(e.body?.why) ?? (decision.body || undefined);
+          addInferredEdge(decision.id, issue.id, "addresses", intent, "inferred", e);
+        }
+      }
+    } else if (c === "task") {
+      const tId = identity(e, "task");
+      const task = tId && memory.getNodeByExternalKey(ext("task", tId));
+      if (task) {
+        const ev = evFor(e);
+        if (issueRef) {
+          const issue = memory.getNodeByExternalKey(ext("issue", issueRef));
+          if (issue) attach(ev.id, addInferredEdge(task.id, issue.id, "resolves", undefined, "observed", e), "supports", e);
+        }
+        if (decisionRef) {
+          const dec = memory.getNodeByExternalKey(ext("decision", decisionRef));
+          if (dec) attach(ev.id, addInferredEdge(task.id, dec.id, "implements", undefined, "observed", e), "supports", e);
+        }
+      }
+    }
+  }
+
+  // PASS 2b — fold outcome/note events onto the now-complete edge set.
+  for (const e of events) {
+    const c = conceptOf(e.kind);
+    if (c === "outcome") {
+      const { issueRef, decisionRef } = refsOf(e);
+      const targets = new Set<string>();
+      if (decisionRef) {
+        const dec = memory.getNodeByExternalKey(ext("decision", decisionRef));
+        if (dec) for (const edge of memory.outgoingEdges(dec.id, "addresses")) targets.add(edge.id);
+      }
+      if (issueRef) {
+        const issue = memory.getNodeByExternalKey(ext("issue", issueRef));
+        if (issue) for (const edge of memory.incomingEdges(issue.id, "addresses")) targets.add(edge.id);
+      }
+      if (targets.size === 0) {
+        r.log.push(`skip ${e.kind} "${title(e)}": no edge to bear on`);
+        continue;
+      }
+      const ev = evFor(e);
+      const stance = stanceOf(e.body?.outcome);
+      for (const edgeId of targets) attach(ev.id, edgeId, stance, e);
+    } else if (c === "note") {
+      // a bare fact — captured as evidence for the record, never invented into a claim
+      evFor(e);
+      r.log.push(`recorded ${e.kind} "${title(e)}" as evidence`);
+    }
+    // c === "issue": node created in pass 1; c === "decision"/"task": edges done in 2a.
+  }
+
+  return r;
 }
