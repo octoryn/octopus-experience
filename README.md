@@ -5,6 +5,10 @@
 > Project Memory does not invent causality. It tracks claims, evidence, and the
 > lifecycle of trust.
 
+> **Part of [Octopus Core](https://github.com/octoryn) — the open infrastructure stack for governed AI.** One job per repo, along the agent lifecycle: [Scout](https://github.com/octoryn/octopus-scout) · [Observe](https://github.com/octoryn/octopus-observe) · [Experience](https://github.com/octoryn/octopus-experience) · [Blackboard](https://github.com/octoryn/octopus-blackboard) · [Runtime](https://github.com/octoryn/octopus-runtime) · [Replay](https://github.com/octoryn/octopus-replay) — with [Inspect](https://github.com/octoryn/octopus-inspect) governing every stage.
+>
+> **This repo — Experience · Understand:** Knowledge is earned, not stored.
+
 Today, every AI session starts from zero. Conversation memory remembers *a
 chat*; it does not remember *why this repository looks the way it does*. Project
 Memory is the missing layer: multiple agents, multiple people, multiple sessions,

@@ -4,6 +4,10 @@
 
 > Project Memory 不编造因果。它记录主张、证据，以及信任的生命周期。
 
+> **[Octopus Core](https://github.com/octoryn) 的一部分 —— 受治理 AI 的开源基础设施栈。** 每个仓库只做一件事，沿 agent 生命周期组合：[Scout](https://github.com/octoryn/octopus-scout) · [Observe](https://github.com/octoryn/octopus-observe) · [Experience](https://github.com/octoryn/octopus-experience) · [Blackboard](https://github.com/octoryn/octopus-blackboard) · [Runtime](https://github.com/octoryn/octopus-runtime) · [Replay](https://github.com/octoryn/octopus-replay) —— [Inspect](https://github.com/octoryn/octopus-inspect) 横贯每一环做治理。
+>
+> **本仓库 —— Experience · 理解：** 知识是挣来的，不是存下的。
+
 今天，每一个 AI 会话都从零开始。对话记忆记住的是*一段聊天*，它不记得*这个仓库为什么长成今天这样*。Project Memory 就是缺失的那一层：多个 Agent、多个人、多个会话，跨越数月——让工作**不断累积，而不是每次重启**。
 
 它是 [octopus-blackboard](https://github.com/octoryn/octopus-blackboard) 的姊妹项目：
