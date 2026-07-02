@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /** octomem — a thin human-facing CLI over Project Memory. */
+import { readFileSync, writeFileSync } from "node:fs";
 import { Command } from "commander";
 import { ProjectMemory } from "./memory.js";
-import { ingestBlackboard } from "./adapters/blackboard.js";
+import { generateActor, type ProvenanceBundle } from "./protocol.js";
 
 const program = new Command();
 program
   .name("octomem")
   .description("Project Memory — ask why, not just what")
-  .version("0.2.0");
+  .version("0.3.0");
 
 program
   .command("why <target>")
@@ -75,16 +76,32 @@ program
   });
 
 program
-  .command("ingest-blackboard <path>")
-  .description("distill an octopus-blackboard SQLite database into causal memory")
-  .action((path: string) => {
+  .command("keygen <id>")
+  .description("generate an Ed25519 actor keypair (writes <id>.actor.json)")
+  .action((id: string) => {
+    const kp = generateActor(id);
+    const file = `${id}.actor.json`;
+    writeFileSync(file, JSON.stringify(kp, null, 2));
+    console.log(`wrote ${file}  (keep the privateKey secret; share only the public actor)`);
+  });
+
+program
+  .command("ingest-bundle <file>")
+  .description("ingest a signed Provenance Bundle (the open cross-project protocol)")
+  .option("--allow-unsigned", "accept an unverifiable bundle (its evidence stays inert for trust)")
+  .action((file: string, opts: { allowUnsigned?: boolean }) => {
+    const bundle = JSON.parse(readFileSync(file, "utf8")) as ProvenanceBundle;
     const m = new ProjectMemory();
     try {
-      const r = ingestBlackboard(m, path);
+      const r = m.ingestBundle(bundle, { requireSignature: !opts.allowUnsigned });
       console.log(
-        `ingested — issues:${r.issues} tasks:${r.tasks} decisions:${r.decisions} edges:${r.edges} evidence:${r.evidence}`,
+        `ingested from ${r.issuer} — verified:${r.verified}${r.reason ? ` (${r.reason})` : ""}`,
       );
-      for (const line of r.log) console.log(`  ${line}`);
+      console.log(
+        `  nodes:${r.remembered.nodes.length} edges:${r.remembered.edges.length} ` +
+          `distilled(nodes:${r.distilled.createdNodes} edges:${r.distilled.createdEdges} transitions:${r.distilled.transitions.length})`,
+      );
+      for (const line of r.distilled.log) console.log(`  ${line}`);
     } finally {
       m.close();
     }

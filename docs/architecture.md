@@ -1,15 +1,15 @@
 # Architecture
 
-Project Memory is a small pipeline with a strict middle.
+Project Memory is a small pipeline with a strict middle, fed only through an open
+protocol — never by reaching into another system's storage.
 
 ```
-        work happens
-             │
+   any producer (CI, code host, agent, Blackboard, ...)
+             │  emits a SIGNED Provenance Bundle (docs/protocol.md)
    ┌─────────▼──────────┐
-   │  Blackboard         │   ambient capture: risks, tasks, decisions,
-   │  (sibling project)  │   commits, reviews — append-only, attributed
+   │  ingestBundle()     │   verify signature → stamp evidence with issuer
+   │  src/protocol.ts    │   (a bundle carries evidence, never trust)
    └─────────┬──────────┘
-             │  ingestBlackboard() / Trace[]
    ┌─────────▼──────────┐
    │  Distillation       │   proposes nodes + edges at observed / inferred /
    │  src/distill.ts     │   hypothesis tier — never trusted
@@ -24,6 +24,12 @@ Project Memory is a small pipeline with a strict middle.
         future decisions
 ```
 
+**Decoupling is a hard rule.** Project Memory MUST NOT depend on any other
+project's database, storage format, internal APIs, or code. The only integration
+surface is the [Provenance Bundle protocol](protocol.md). Blackboard is one
+possible producer among many; Project Memory works, and makes complete sense, even
+if Blackboard does not exist.
+
 ## Modules
 
 | module | role |
@@ -34,7 +40,7 @@ Project Memory is a small pipeline with a strict middle.
 | `src/memory.ts` | `ProjectMemory` — the public API (`remember` / `why` / `distill` / `ask` / `digest` / `verify`) |
 | `src/why.ts` | causal-chain reconstruction (per-path traversal) + rendering |
 | `src/distill.ts` | `Distiller` — traces → proposed edges + evidence |
-| `src/adapters/blackboard.ts` | read an `octopus-blackboard` DB and distill it |
+| `src/protocol.ts` | the open Provenance Bundle protocol — sign / verify / canonicalize |
 | `src/query.ts` | `ask` (ranked recall) and `digest` (lessons brief) |
 | `src/mcp.ts` / `src/cli.ts` | the MCP server and the human CLI |
 

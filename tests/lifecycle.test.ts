@@ -111,16 +111,20 @@ describe("edge lifecycle — the constitution", () => {
     expect(state).toBe("trusted");
   });
 
-  it("human attestation defends a claim -> trusted", () => {
+  it("a VERIFIED human attestation defends a claim -> trusted", () => {
     const e = edge({ intent: "senior eng vouches" });
     const links = [link(e.id, "EV-1", "supports")];
-    const state = computeEdgeState(
-      e,
-      links,
-      nodeMap(task, decision, ev("EV-1", "attestation")),
-      opts(),
-    );
+    const signed = node("EV-1", "evidence", { evidenceKind: "attestation", verified: true });
+    const state = computeEdgeState(e, links, nodeMap(task, decision, signed), opts());
     expect(state).toBe("trusted");
+  });
+
+  it("an UNSIGNED attestation does not defend — it is only a claim", () => {
+    const e = edge({ intent: "someone says so" });
+    const links = [link(e.id, "EV-1", "supports")];
+    const unsigned = ev("EV-1", "attestation"); // verified undefined
+    const state = computeEdgeState(e, links, nodeMap(task, decision, unsigned), opts());
+    expect(state).toBe("hypothesis");
   });
 
   it("defended mechanism WITHOUT intent stays observed, not trusted", () => {

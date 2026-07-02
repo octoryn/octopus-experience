@@ -31,6 +31,10 @@ export interface Trace {
   outcome?: "pass" | "fail";
   /** attach directly to a specific edge instead of resolving via mentions */
   targetEdge?: string;
+  /** protocol provenance, set when a trace arrives inside a signed bundle */
+  signer?: string;
+  verified?: boolean;
+  contentHash?: string;
 }
 
 export interface DistillResult {
@@ -172,6 +176,9 @@ export class Distiller {
         ref: trace.ref,
         externalKey: key,
         actor: trace.actor,
+        signer: trace.signer,
+        verified: trace.verified,
+        contentHash: trace.contentHash,
       },
       trace.at,
     );

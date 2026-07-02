@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0]
+
+The release that makes cooperation a **protocol**, not a coupling.
+
+### Added
+
+- **Provenance Bundle protocol** (`provenance/0`, `src/protocol.ts`,
+  `docs/protocol.md`): a signed JSON wire format for feeding memory from any
+  external system. Ed25519 via Node `crypto` — no third-party dependency.
+  `signBundle` / `verifyBundle` / `canonicalize` / `hashContent` / `generateActor`.
+- **`ingestBundle`** (MCP `ingest_bundle`, CLI `ingest-bundle`, `keygen`): verify a
+  bundle's signature, stamp its evidence with the issuer and a `verified` flag,
+  then apply proposals and distil traces. `--require-signature` rejects
+  unverifiable bundles.
+- **Verifiable evidence**: evidence nodes carry `signer`, `verified`, and a
+  `contentHash`; `why` shows "✓ signed by …".
+
+### Changed
+
+- **A human attestation now defends an edge only if it is cryptographically
+  signed.** An unsigned vouch is recorded as a claim but cannot promote an edge to
+  trusted — anyone could forge it.
+- **Removed the Blackboard SQLite adapter.** Reading another project's database
+  coupled the repositories through implementation. Blackboard (like any producer)
+  now feeds Project Memory by *emitting* a signed Provenance Bundle. Project Memory
+  depends on the protocol, never on Blackboard.
+
+### Security
+
+- **Fail closed.** `ingestBundle` (and the CLI / MCP entry points) reject a bundle
+  whose signature does not verify, unless a caller explicitly opts into unsigned
+  ingestion.
+- **Unverified evidence is inert.** Evidence that arrives in an unverifiable
+  bundle is recorded for audit but can neither promote an edge to `trusted` nor
+  contradict one into `stale`/`refuted`. Locally produced evidence keeps its
+  implicit local trust. (Note: a valid signature proves *attribution*, not
+  *authorization* — deciding which issuers to believe is a governance layer above
+  this protocol.)
+
+### Principle
+
+> Independent repositories. Stable protocols. Replaceable implementations.
+> Projects compose through protocols, never through implementations.
+
 ## [0.2.0]
 
 The release that makes memory a **by-product of work**.

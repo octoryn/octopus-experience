@@ -16,6 +16,13 @@ import {
 import { reconstructWhy, renderWhy, type WhyOptions, type WhyResult } from "./why.js";
 import { Distiller, type DistillResult, type Trace } from "./distill.js";
 import {
+  hashContent,
+  signBundle,
+  verifyBundle,
+  type Keypair,
+  type ProvenanceBundle,
+} from "./protocol.js";
+import {
   ask as runAsk,
   digest as runDigest,
   renderAsk,
@@ -46,6 +53,10 @@ export interface NodeInput {
   /** evidence-only */
   evidenceKind?: EvidenceKind;
   ref?: string;
+  /** evidence-only, protocol provenance */
+  signer?: string;
+  verified?: boolean;
+  contentHash?: string;
 }
 
 export interface EdgeInput {
@@ -128,6 +139,9 @@ export class ProjectMemory {
       externalKey: input.externalKey,
       evidenceKind: input.evidenceKind,
       ref: input.ref,
+      signer: input.signer,
+      verified: input.verified,
+      contentHash: input.contentHash,
       // a decision is a prescription: it starts life "verified now"
       lastVerified: type === "decision" ? (at ?? this.clock()) : undefined,
     };
@@ -197,23 +211,91 @@ export class ProjectMemory {
     return targetType === "edge" ? this.edgeState(targetId, now) : undefined;
   }
 
-  /** Convenience: a human vouches for an edge — a first-class, attributed evidence kind. */
+  /**
+   * A human vouches for an edge. Pass a Keypair to produce a *signed* attestation
+   * (verified — it can promote to trusted); pass a bare name for an unsigned claim
+   * (which does NOT defend, since anyone could forge it). This is the protocol's
+   * teeth: a vouch only counts when it's cryptographically attributable.
+   */
   attest(
     edgeId: string,
-    actor: string,
+    attester: string | Keypair,
     note = "human attestation",
     at?: number,
   ): EdgeState {
     const now = at ?? this.clock();
+    const actorId = typeof attester === "string" ? attester : attester.actor.id;
+    const verified = typeof attester !== "string";
     const ev = this.addNode(
-      { type: "evidence", title: note, evidenceKind: "attestation", actor },
+      {
+        type: "evidence",
+        title: note,
+        evidenceKind: "attestation",
+        actor: actorId,
+        signer: actorId,
+        verified,
+        contentHash: hashContent({ kind: "attestation", edge: edgeId, note, actor: actorId }),
+      },
       now,
     );
     this.addEvidence(
-      { evidence: ev.id, target: edgeId, targetType: "edge", stance: "supports", actor },
+      { evidence: ev.id, target: edgeId, targetType: "edge", stance: "supports", actor: actorId },
       now,
     );
     return this.edgeState(edgeId, now);
+  }
+
+  /**
+   * Ingest a signed Provenance Bundle — the ONLY sanctioned cross-project entry
+   * point. Verifies the signature, stamps every piece of evidence with the issuer
+   * and whether it verified, then applies the proposals and distils the traces.
+   * With `requireSignature`, an unverifiable bundle is rejected outright.
+   */
+  ingestBundle(
+    bundle: ProvenanceBundle,
+    opts?: { requireSignature?: boolean },
+  ): {
+    verified: boolean;
+    issuer: string;
+    reason?: string;
+    remembered: RememberResult;
+    distilled: DistillResult;
+  } {
+    // Fail closed: the sole cross-project entry point rejects unverifiable
+    // bundles unless a caller explicitly opts into unsigned ingestion.
+    const requireSignature = opts?.requireSignature ?? true;
+    const v = verifyBundle(bundle);
+    if (requireSignature && !v.valid) {
+      throw new Error(`bundle rejected: ${v.reason ?? "invalid signature"}`);
+    }
+    const verified = v.valid;
+    const signer = bundle.issuer.id;
+    const at = bundle.issuedAt;
+    const p = bundle.payload;
+
+    const stamp = (n: NodeInput): NodeInput =>
+      n.type === "evidence"
+        ? {
+            ...n,
+            signer,
+            verified,
+            contentHash: n.contentHash ?? hashContent({ kind: n.evidenceKind, ref: n.ref, title: n.title }),
+          }
+        : n;
+
+    const remembered = this.remember({
+      nodes: (p.nodes ?? []).map(stamp),
+      edges: p.edges,
+      evidence: p.evidence,
+      at,
+    });
+    const traces: Trace[] = (p.traces ?? []).map((t) => ({
+      ...t,
+      signer,
+      verified: t.verified ?? verified,
+    }));
+    const distilled = this.distill(traces);
+    return { verified, issuer: signer, reason: v.reason, remembered, distilled };
   }
 
   /** Record that a newer edge (usually a decision) replaces an older one. */

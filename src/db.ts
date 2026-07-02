@@ -40,7 +40,10 @@ export class Store {
         external_key  TEXT UNIQUE,
         last_verified INTEGER,
         evidence_kind TEXT,
-        ref           TEXT
+        ref           TEXT,
+        signer        TEXT,
+        verified      INTEGER,
+        content_hash  TEXT
       );
       CREATE TABLE IF NOT EXISTS edges (
         id            TEXT PRIMARY KEY,
@@ -92,8 +95,8 @@ export class Store {
   insertNode(n: MemoryNode): void {
     this.db
       .prepare(
-        `INSERT INTO nodes (id,type,title,body,created_at,actor,external_key,last_verified,evidence_kind,ref)
-         VALUES (@id,@type,@title,@body,@createdAt,@actor,@externalKey,@lastVerified,@evidenceKind,@ref)`,
+        `INSERT INTO nodes (id,type,title,body,created_at,actor,external_key,last_verified,evidence_kind,ref,signer,verified,content_hash)
+         VALUES (@id,@type,@title,@body,@createdAt,@actor,@externalKey,@lastVerified,@evidenceKind,@ref,@signer,@verified,@contentHash)`,
       )
       .run({
         id: n.id,
@@ -106,6 +109,9 @@ export class Store {
         lastVerified: n.lastVerified ?? null,
         evidenceKind: n.evidenceKind ?? null,
         ref: n.ref ?? null,
+        signer: n.signer ?? null,
+        verified: n.verified === undefined ? null : n.verified ? 1 : 0,
+        contentHash: n.contentHash ?? null,
       });
   }
 
@@ -262,6 +268,9 @@ interface NodeRow {
   last_verified: number | null;
   evidence_kind: EvidenceKind | null;
   ref: string | null;
+  signer: string | null;
+  verified: number | null;
+  content_hash: string | null;
 }
 interface EdgeRow {
   id: string;
@@ -298,6 +307,9 @@ function rowToNode(r: NodeRow): MemoryNode {
     lastVerified: r.last_verified ?? undefined,
     evidenceKind: r.evidence_kind ?? undefined,
     ref: r.ref ?? undefined,
+    signer: r.signer ?? undefined,
+    verified: r.verified === null ? undefined : r.verified === 1,
+    contentHash: r.content_hash ?? undefined,
   };
 }
 function rowToEdge(r: EdgeRow): MemoryEdge {

@@ -70,10 +70,17 @@ digest "latency"
 
 一条通过的 benchmark 把一个方案升成 `trusted`，一条失败的 test 把另一个打回——**没有人写过“trusted”**。`digest` 随后把经验沉淀出来，包括我们*证否*过的死路，避免重走。
 
-**Blackboard 桥**把这一切接到真实工作上：指向一个 [octopus-blackboard](https://github.com/octoryn/octopus-blackboard) 数据库，它的 risks/tasks/decisions/reviews 会自动蒸馏成因果记忆——review 成为佐证或反驳的证据。
+## 通过协议协作，而非实现
+
+> **独立仓库。稳定协议。可替换实现。**
+
+Project Memory 从不伸手去读另一个系统的存储或代码。唯一入口是一份签名的 **Provenance Bundle**(`provenance/0`,一种 JSON 线格式——见 [docs/protocol.md](docs/protocol.md))。任何生产者——CI、代码托管、Agent,或 [octopus-blackboard](https://github.com/octoryn/octopus-blackboard)——产出一个 bundle,Project Memory 验签后摄取。**假设 Blackboard 不存在,Project Memory 依然完全成立。**
+
+bundle 承载**证据,而非信任**。签名让证据防篡改、可归属;信任仍由这里的宪法计算。特别地:一条人工 **attestation 只有在被密码学签名时才能"辩护"一条边**——未签名的背书只是任何人都能伪造的 claim。
 
 ```bash
-node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
+node dist/cli.js keygen ci-bot            # -> ci-bot.actor.json (Ed25519)
+node dist/cli.js ingest-bundle bundle.json   # rejects unsigned by default
 node dist/cli.js digest "Metal"
 ```
 
@@ -93,7 +100,8 @@ npm run pipeline    # 记忆由工作轨迹自动沉淀
 node dist/cli.js why "Metal KV Cache"
 node dist/cli.js ask "cache"
 node dist/cli.js digest "Metal"
-node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
+node dist/cli.js keygen ci-bot
+node dist/cli.js ingest-bundle bundle.json
 ```
 
 ### 作为 MCP 服务器
@@ -114,6 +122,7 @@ node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
 
 - `remember` —— 记录工作、提出因果边
 - `observe` —— 把原始工作轨迹自动蒸馏进记忆
+- `ingest_bundle` —— 摄取签名的 Provenance Bundle（开放的跨项目协议）
 - `add_evidence` / `attest` —— 为边提供佐证或质疑
 - `verify` —— 复活已 stale 的处方
 - `why` —— 重建因果链
@@ -123,7 +132,7 @@ node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
 
 ## 状态
 
-v0.2 —— 核心宪法（生命周期引擎、`why`），外加把原始工作轨迹蒸馏为候选边的**蒸馏层**、Blackboard 桥、`ask` / `digest`、幂等摄取。已测试（37 个用例）并经对抗审核。路线图：更丰富的蒸馏规则、可签名/防篡改的证据、托管的多项目模式。
+v0.3 —— 核心宪法（生命周期引擎、`why`）、蒸馏层、`ask` / `digest`、幂等摄取,以及开放的 **Provenance Bundle 协议**(Ed25519 签名、防篡改证据)。已测试（43 个用例）并经三轮对抗审核。路线图(都建立在协议**之上**、天然商业化):跨项目信任注册表与密钥轮换、分布式/联邦验证、企业治理与合规、托管多项目模式。
 
 ## 许可证
 

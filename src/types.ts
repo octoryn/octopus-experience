@@ -99,6 +99,12 @@ export interface MemoryNode {
   /** evidence-only */
   evidenceKind?: EvidenceKind;
   ref?: string; // commit sha, PR url, benchmark id, ...
+  /** evidence-only, provenance protocol: who issued it (actor id) and whether its signature verified */
+  signer?: string;
+  /** true when this evidence arrived in a bundle whose signature verified */
+  verified?: boolean;
+  /** sha256 of the evidence content (protocol integrity / dedup) */
+  contentHash?: string;
 }
 
 export interface MemoryEdge {

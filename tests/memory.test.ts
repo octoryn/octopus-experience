@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ProjectMemory } from "../src/memory.js";
 import { DEFAULT_STALE_AFTER_MS } from "../src/lifecycle.js";
+import { generateActor } from "../src/protocol.js";
 
 const T0 = 1_700_000_000_000;
 
@@ -112,7 +113,7 @@ describe("ProjectMemory — integration", () => {
     expect(m.edgeState("EDGE-1", later)).toBe("trusted");
   });
 
-  it("attest: a human vouch promotes a bare claim to trusted", () => {
+  it("attest: an unsigned vouch is only a claim; a signed vouch promotes to trusted", () => {
     const r = m.remember({
       nodes: [
         { key: "d", type: "decision", title: "Keep the retry budget at 3" },
@@ -121,7 +122,11 @@ describe("ProjectMemory — integration", () => {
       edges: [{ key: "e", from: "d", to: "i", relation: "addresses", intent: "3 is empirically enough" }],
     });
     expect(r.edges[0].state).toBe("claimed");
-    expect(m.attest("EDGE-1", "ran")).toBe("trusted");
+    // unsigned vouch: unverifiable, so it is inert — the edge stays a bare claim
+    expect(m.attest("EDGE-1", "ran")).toBe("claimed");
+    // signed vouch: cryptographically attributable -> defends -> trusted
+    const kp = generateActor("ran");
+    expect(m.attest("EDGE-1", kp)).toBe("trusted");
   });
 
   it("evidence nodes require a kind", () => {

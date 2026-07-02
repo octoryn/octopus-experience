@@ -23,6 +23,19 @@ export { Distiller } from "./distill.js";
 export type { Trace, DistillResult } from "./distill.js";
 export { ask, renderAsk, digest, renderDigest } from "./query.js";
 export type { AskResult, AskHit, Digest } from "./query.js";
-export { ingestBlackboard } from "./adapters/blackboard.js";
-export type { BlackboardIngestResult } from "./adapters/blackboard.js";
+export {
+  PROTOCOL_VERSION,
+  canonicalize,
+  hashContent,
+  generateActor,
+  signBundle,
+  verifyBundle,
+} from "./protocol.js";
+export type {
+  Actor,
+  BundlePayload,
+  ProvenanceBundle,
+  Keypair,
+  VerifyResult,
+} from "./protocol.js";
 export * from "./types.js";

@@ -88,13 +88,25 @@ A passing benchmark promoted one fix to `trusted`; a failing test knocked the
 other back — **no human wrote "trusted."** `digest` then materialises the
 lessons, including the dead ends we refuted so they aren't re-walked.
 
-The **Blackboard bridge** wires this to real work: point it at an
-[octopus-blackboard](https://github.com/octoryn/octopus-blackboard) database and
-its risks/tasks/decisions/reviews distil into causal memory automatically —
-reviews become the defending or contradicting evidence.
+## Composes through protocols, never implementations
+
+> **Independent repositories. Stable protocols. Replaceable implementations.**
+
+Project Memory never reaches into another system's storage or code. The only way
+in is a signed **Provenance Bundle** (`provenance/0`, a JSON wire format — see
+[docs/protocol.md](docs/protocol.md)). Any producer — a CI job, a code host, an
+agent, or [octopus-blackboard](https://github.com/octoryn/octopus-blackboard) —
+emits one; Project Memory verifies the signature and ingests it. Assume Blackboard
+doesn't exist and Project Memory still makes complete sense.
+
+A bundle carries **evidence, never trust.** Signatures make evidence
+tamper-evident and *attributable*; trust is still computed here, by the
+constitution. In particular a human **attestation only defends an edge if it is
+cryptographically signed** — an unsigned vouch is just a claim anyone could forge.
 
 ```bash
-node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
+node dist/cli.js keygen ci-bot            # -> ci-bot.actor.json (Ed25519)
+node dist/cli.js ingest-bundle bundle.json   # rejects unsigned by default
 node dist/cli.js digest "Metal"
 ```
 
@@ -114,7 +126,8 @@ npm run pipeline    # memory accruing from work traces
 node dist/cli.js why "Metal KV Cache"
 node dist/cli.js ask "cache"
 node dist/cli.js digest "Metal"
-node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
+node dist/cli.js keygen ci-bot
+node dist/cli.js ingest-bundle bundle.json
 ```
 
 ### As an MCP server
@@ -135,6 +148,7 @@ Tools:
 
 - `remember` — record work and propose causal edges
 - `observe` — distil raw work traces into memory automatically
+- `ingest_bundle` — ingest a signed Provenance Bundle (the open cross-project protocol)
 - `add_evidence` / `attest` — defend or contest an edge
 - `verify` — revive a stale prescription
 - `why` — reconstruct a causal chain
@@ -163,11 +177,12 @@ console.log(m.explain("Shard the KV cache lock")); // -> trusted causal chain
 
 ## Status
 
-v0.2 — the core constitution (lifecycle engine, `why`), plus the distillation
-layer that turns raw work traces into proposed edges, the Blackboard bridge,
-`ask`/`digest`, and idempotent ingestion. Tested (37 cases) and adversarially
-reviewed. Roadmap: richer distillation rules, signed/tamper-evident evidence,
-and a hosted multi-project mode.
+v0.3 — the core constitution (lifecycle engine, `why`), the distillation layer,
+`ask`/`digest`, idempotent ingestion, and the open **Provenance Bundle protocol**
+with Ed25519-signed, tamper-evident evidence. Tested (43 cases) and adversarially
+reviewed three times. Roadmap (naturally commercial, built *on* the protocol):
+cross-project trust registries and key rotation, distributed/federated
+verification, enterprise governance & compliance, and a hosted multi-project mode.
 
 ## License
 

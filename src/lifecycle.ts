@@ -100,14 +100,29 @@ export function computeEdgeState(
   // 1. Explicit override always wins — a superseded edge stays visible as history.
   if (edge.supersededBy) return "superseded";
 
-  const { supports, contradicts } = linksFor(edge, links);
+  const all = linksFor(edge, links);
+  // Evidence that arrived in a bundle whose signature did NOT verify is INERT:
+  // recorded for audit, but it can neither defend nor contradict. Locally
+  // produced evidence (verified === undefined) and validly signed evidence
+  // (verified === true) both count. This stops an unsigned/forged bundle from
+  // minting trust or refuting existing edges, without disabling local traces.
+  const live = (l: EvidenceLink): boolean =>
+    nodeById.get(l.evidenceId)?.verified !== false;
+  const supports = all.supports.filter(live);
+  const contradicts = all.contradicts.filter(live);
 
   // Classify supporting evidence by tier.
   let hasDefending = false;
   let hasAligning = false;
   for (const l of supports) {
-    const kind = nodeById.get(l.evidenceId)?.evidenceKind;
-    if (kind && DEFENDING_KINDS.has(kind)) hasDefending = true;
+    const evNode = nodeById.get(l.evidenceId);
+    const kind = evNode?.evidenceKind;
+    if (kind === "attestation") {
+      // A human vouch defends only if it is cryptographically verified —
+      // an unsigned attestation is just a claim anyone could forge.
+      if (evNode?.verified) hasDefending = true;
+      else hasAligning = true;
+    } else if (kind && DEFENDING_KINDS.has(kind)) hasDefending = true;
     else if (kind && ALIGNING_KINDS.has(kind)) hasAligning = true;
   }
   const hasSupport = supports.length > 0;

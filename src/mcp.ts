@@ -24,7 +24,7 @@ function text(s: string) {
 }
 
 export function buildServer(memory: ProjectMemory): McpServer {
-  const server = new McpServer({ name: "octopus-experience", version: "0.2.0" });
+  const server = new McpServer({ name: "octopus-experience", version: "0.3.0" });
 
   server.tool(
     "remember",
@@ -122,14 +122,14 @@ export function buildServer(memory: ProjectMemory): McpServer {
 
   server.tool(
     "attest",
-    "A human vouches for an edge. Attestation is first-class, attributed evidence — it can promote an edge to trusted, but it is recorded with the attester's name.",
+    "Record a human vouch for an edge, attributed to `actor`. Over MCP this is an UNSIGNED attestation: it is logged as a claim but does NOT by itself promote the edge to trusted, because it isn't cryptographically attributable. A signed, trust-promoting attestation must arrive via a signed Provenance Bundle (ingest_bundle).",
     {
       edge: z.string(),
       actor: z.string(),
       note: z.string().optional(),
     },
     async ({ edge, actor, note }) =>
-      text(`${edge} -> [${memory.attest(edge, actor, note)}]`),
+      text(`${edge} -> [${memory.attest(edge, actor, note)}]  (unsigned claim)`),
   );
 
   server.tool(
@@ -176,6 +176,29 @@ export function buildServer(memory: ProjectMemory): McpServer {
     "A lessons brief on a topic: what we currently trust, what has gone stale, what was superseded, and — uniquely — the dead ends we refuted so they are not retried.",
     { topic: z.string() },
     async ({ topic }) => text(memory.digestText(topic)),
+  );
+
+  server.tool(
+    "ingest_bundle",
+    "Ingest a signed Provenance Bundle — the open, cross-project protocol for feeding memory. Rejects bundles whose signature does not verify (pass requireSignature:false to accept an unsigned bundle, whose evidence then stays INERT for trust). Evidence is stamped with the issuer; nothing is trusted merely because it was ingested. This is how any external system (a CI job, a code host, another agent) contributes evidence without coupling to Project Memory's internals.",
+    {
+      bundle: z.object({
+        protocol: z.string(),
+        issuer: z.object({ id: z.string(), publicKey: z.string() }),
+        issuedAt: z.number(),
+        payload: z.record(z.string(), z.unknown()),
+        signature: z.string().optional(),
+      }),
+      requireSignature: z.boolean().optional(),
+    },
+    async ({ bundle, requireSignature }) => {
+      const r = memory.ingestBundle(bundle as never, { requireSignature });
+      return text(
+        `from ${r.issuer} verified:${r.verified}${r.reason ? ` (${r.reason})` : ""} — ` +
+          `nodes:${r.remembered.nodes.length} edges:${r.remembered.edges.length} ` +
+          `transitions:${r.distilled.transitions.length}`,
+      );
+    },
   );
 
   return server;

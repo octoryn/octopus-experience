@@ -175,6 +175,10 @@ function phrase(step: WhyStep): string {
   return step.direction === "out" ? p[0] : p[1];
 }
 
+function sig(node: MemoryNode): string {
+  return node.verified ? `  ✓ signed by ${node.signer ?? "?"}` : "";
+}
+
 function tag(step: WhyStep): string {
   const bits = [GLYPH[step.state]];
   if (step.confidence < 1) bits.push(`conf ${step.confidence.toFixed(2)}`);
@@ -186,7 +190,7 @@ export function renderWhy(result: WhyResult): string {
   const lines: string[] = [];
   lines.push(`why ${result.root.id}  "${result.root.title}"`);
   for (const ev of result.rootEvidence) {
-    lines.push(`   • evidence: ${ev.node.evidenceKind ?? "note"} ${ev.node.id} (${ev.stance}) "${ev.node.title}"`);
+    lines.push(`   • evidence: ${ev.node.evidenceKind ?? "note"} ${ev.node.id} (${ev.stance}) "${ev.node.title}"${sig(ev.node)}`);
   }
 
   const walk = (steps: WhyStep[], prefix: string): void => {
@@ -199,7 +203,7 @@ export function renderWhy(result: WhyResult): string {
       );
       for (const ev of step.evidence) {
         lines.push(
-          `${prefix}${cont}   • ${ev.node.evidenceKind ?? "note"} ${ev.node.id} (${ev.stance}) "${ev.node.title}"`,
+          `${prefix}${cont}   • ${ev.node.evidenceKind ?? "note"} ${ev.node.id} (${ev.stance}) "${ev.node.title}"${sig(ev.node)}`,
         );
       }
       walk(step.children, prefix + cont);
