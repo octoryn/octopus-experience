@@ -9,7 +9,7 @@ const program = new Command();
 program
   .name("octomem")
   .description("Project Memory — ask why, not just what")
-  .version("0.4.1");
+  .version("0.5.0");
 
 program
   .command("why <target>")

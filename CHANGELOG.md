@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0]
+
+### Changed
+
+- **License changed from AGPL-3.0-or-later to Apache-2.0.** More permissive; no
+  copyleft or network-use obligations. `LICENSE`, `package.json`, and both READMEs
+  updated. No code or behavior changes.
+
 ## [0.4.1]
 
 ### Docs / packaging

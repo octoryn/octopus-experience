@@ -136,4 +136,4 @@ v0.3 —— 核心宪法（生命周期引擎、`why`）、蒸馏层、`ask` / `
 
 ## 许可证
 
-AGPL-3.0-or-later © Octoryn
+Apache-2.0 © Octoryn

@@ -1,8 +1,8 @@
 {
   "name": "octopus-experience",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Project Memory — organizational, causal memory for AI teams. Ask why, not just what.",
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "author": "Octoryn",
   "type": "module",
   "keywords": [

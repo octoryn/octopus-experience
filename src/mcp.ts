@@ -24,7 +24,7 @@ function text(s: string) {
 }
 
 export function buildServer(memory: ProjectMemory): McpServer {
-  const server = new McpServer({ name: "octopus-experience", version: "0.4.1" });
+  const server = new McpServer({ name: "octopus-experience", version: "0.5.0" });
 
   server.tool(
     "remember",

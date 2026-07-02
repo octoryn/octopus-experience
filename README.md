@@ -194,4 +194,4 @@ federated verification, enterprise governance & compliance, hosted multi-project
 
 ## License
 
-AGPL-3.0-or-later © Octoryn
+Apache-2.0 © Octoryn
