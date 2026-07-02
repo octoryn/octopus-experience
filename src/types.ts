@@ -87,6 +87,13 @@ export interface MemoryNode {
   body: string;
   createdAt: number; // epoch ms
   actor?: string; // who recorded it
+  /**
+   * Stable identity from the source system (e.g. "bb:decision:D-9", a commit
+   * sha, an issue-tracker key). Unique when set — re-ingesting the same source
+   * record reuses the node instead of duplicating it, which makes distillation
+   * idempotent.
+   */
+  externalKey?: string;
   /** decision-only: when the prescription was last confirmed to still apply */
   lastVerified?: number;
   /** evidence-only */

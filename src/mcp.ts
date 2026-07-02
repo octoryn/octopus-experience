@@ -24,7 +24,7 @@ function text(s: string) {
 }
 
 export function buildServer(memory: ProjectMemory): McpServer {
-  const server = new McpServer({ name: "octopus-experience", version: "0.1.0" });
+  const server = new McpServer({ name: "octopus-experience", version: "0.2.0" });
 
   server.tool(
     "remember",
@@ -137,6 +137,45 @@ export function buildServer(memory: ProjectMemory): McpServer {
     "Re-confirm that a prescription still applies today. Resets the decay clock and revives a stale edge to trusted.",
     { edge: z.string() },
     async ({ edge }) => text(`${edge} -> [${memory.verify(edge)}]`),
+  );
+
+  server.tool(
+    "observe",
+    "Distill raw work traces (commits, tests, benchmarks, reviews) into memory automatically. Commits/PRs that reference known nodes create observed provenance edges; test/benchmark/review outcomes attach as supporting or contradicting evidence, promoting hypotheses to trusted or refuting them. Nothing is fabricated as trusted. This is how memory accrues without anyone writing it by hand.",
+    {
+      traces: z.array(
+        z.object({
+          kind: z.enum(evidenceKinds),
+          ref: z.string().optional(),
+          title: z.string(),
+          actor: z.string().optional(),
+          mentions: z.array(z.string()).optional(),
+          outcome: z.enum(["pass", "fail"]).optional(),
+          targetEdge: z.string().optional(),
+        }),
+      ),
+    },
+    async ({ traces }) => {
+      const r = memory.distill(traces);
+      const head =
+        `nodes:${r.createdNodes} edges:${r.createdEdges} evidence:${r.attachedEvidence} ` +
+        `transitions:${r.transitions.length}`;
+      return text([head, ...r.log].join("\n"));
+    },
+  );
+
+  server.tool(
+    "ask",
+    "Ranked recall across issues/decisions/tasks for a topic, each annotated with how much it is currently trusted. Retrieval with trust attached; use `why` for a full causal chain.",
+    { query: z.string() },
+    async ({ query }) => text(memory.askText(query)),
+  );
+
+  server.tool(
+    "digest",
+    "A lessons brief on a topic: what we currently trust, what has gone stale, what was superseded, and — uniquely — the dead ends we refuted so they are not retried.",
+    { topic: z.string() },
+    async ({ topic }) => text(memory.digestText(topic)),
   );
 
   return server;

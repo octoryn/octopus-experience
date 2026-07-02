@@ -1,0 +1,54 @@
+# Architecture
+
+Project Memory is a small pipeline with a strict middle.
+
+```
+        work happens
+             │
+   ┌─────────▼──────────┐
+   │  Blackboard         │   ambient capture: risks, tasks, decisions,
+   │  (sibling project)  │   commits, reviews — append-only, attributed
+   └─────────┬──────────┘
+             │  ingestBlackboard() / Trace[]
+   ┌─────────▼──────────┐
+   │  Distillation       │   proposes nodes + edges at observed / inferred /
+   │  src/distill.ts     │   hypothesis tier — never trusted
+   └─────────┬──────────┘
+             │  remember() (idempotent via externalKey)
+   ┌─────────▼──────────┐
+   │  The graph + the    │   nodes (issue/decision/task/evidence),
+   │  constitution       │   edges, evidence links → SQLite ledger
+   │  lifecycle.ts       │   trust recomputed on read
+   └─────────┬──────────┘
+             │  why() / ask() / digest()
+        future decisions
+```
+
+## Modules
+
+| module | role |
+| ------ | ---- |
+| `src/types.ts` | the closed domain model — node/edge/evidence, the evidence tiers |
+| `src/lifecycle.ts` | **the constitution**: `computeEdgeState`, decay, confidence. Pure functions, no I/O |
+| `src/db.ts` | SQLite persistence — a ledger of facts, never a cache of conclusions |
+| `src/memory.ts` | `ProjectMemory` — the public API (`remember` / `why` / `distill` / `ask` / `digest` / `verify`) |
+| `src/why.ts` | causal-chain reconstruction (per-path traversal) + rendering |
+| `src/distill.ts` | `Distiller` — traces → proposed edges + evidence |
+| `src/adapters/blackboard.ts` | read an `octopus-blackboard` DB and distill it |
+| `src/query.ts` | `ask` (ranked recall) and `digest` (lessons brief) |
+| `src/mcp.ts` / `src/cli.ts` | the MCP server and the human CLI |
+
+## Two invariants everything rests on
+
+1. **Trust is recomputed, never stored.** `computeEdgeState(edge, evidence, now)`
+   is a pure function. The same edge is `trusted` today and `stale` next year
+   with no writes in between — decay needs no cron. This also means the store can
+   be a plain append-only ledger.
+
+2. **Only evidence creates trust.** Writers — humans, agents, distillation,
+   adapters — may *propose* edges. Promotion to `trusted` happens only when a
+   defending artifact backs a stated intent. That is what separates this from a
+   wiki, a RAG index, or conversation memory: it cannot be talked into believing
+   something.
+
+See [edge-lifecycle.md](edge-lifecycle.md) for the state machine itself.

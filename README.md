@@ -63,6 +63,43 @@ Three stable node types — **Issue, Decision, Evidence** — plus **Task** as a
 append-only provenance anchor. "Knowledge" is deliberately *not* stored; it is
 the result of a `why` query. No knowledge graph, no ontology to learn.
 
+## Memory as a by-product of work
+
+Knowledge tools die when someone has to feed them. So no one does the writing —
+work does. Agents *propose*, and raw traces from the work itself *decide*:
+
+```
+$ npm run pipeline    # abridged
+
+agents propose two competing fixes (claims, unproven)
+  cache fix : hypothesis   pool fix : hypothesis
+
+work traces arrive — the system decides, not the authors
+  EDGE-1: hypothesis -> trusted   (benchmark: p99 512ms -> 90ms)
+  EDGE-2: hypothesis -> stale     (test: pool exhausted DB connections)
+
+digest "latency"
+  ## What we do (trusted)      • add a read-through cache
+  ## Aging — re-verify         • raise the connection pool to 500
+  ## Problems seen             • p99 latency spikes under load
+```
+
+A passing benchmark promoted one fix to `trusted`; a failing test knocked the
+other back — **no human wrote "trusted."** `digest` then materialises the
+lessons, including the dead ends we refuted so they aren't re-walked.
+
+The **Blackboard bridge** wires this to real work: point it at an
+[octopus-blackboard](https://github.com/octoryn/octopus-blackboard) database and
+its risks/tasks/decisions/reviews distil into causal memory automatically —
+reviews become the defending or contradicting evidence.
+
+```bash
+node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
+node dist/cli.js digest "Metal"
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full pipeline.
+
 ## Install & run
 
 ```bash
@@ -70,11 +107,14 @@ npm install
 npm run build
 
 # see the whole idea end-to-end in ~2 seconds
-npm run demo
+npm run demo        # the trust lifecycle
+npm run pipeline    # memory accruing from work traces
 
 # human CLI
 node dist/cli.js why "Metal KV Cache"
-node dist/cli.js search Metal --type issue
+node dist/cli.js ask "cache"
+node dist/cli.js digest "Metal"
+node dist/cli.js ingest-blackboard /path/to/.blackboard/board.db
 ```
 
 ### As an MCP server
@@ -91,9 +131,16 @@ node dist/cli.js search Metal --type issue
 }
 ```
 
-Tools: `remember` (record work + propose edges), `add_evidence` / `attest`
-(defend or contest an edge), `verify` (revive a stale prescription), `search`,
-and `why`.
+Tools:
+
+- `remember` — record work and propose causal edges
+- `observe` — distil raw work traces into memory automatically
+- `add_evidence` / `attest` — defend or contest an edge
+- `verify` — revive a stale prescription
+- `why` — reconstruct a causal chain
+- `ask` — ranked recall with trust attached
+- `digest` — a lessons brief on a topic (incl. refuted dead ends)
+- `search` — plain text lookup
 
 ## Library
 
@@ -116,9 +163,11 @@ console.log(m.explain("Shard the KV cache lock")); // -> trusted causal chain
 
 ## Status
 
-v0.1 — the core (lifecycle engine, `why` reconstruction, MCP server, CLI) with a
-tested constitution. The distillation layer that turns raw Blackboard traces
-into proposed edges is the next milestone.
+v0.2 — the core constitution (lifecycle engine, `why`), plus the distillation
+layer that turns raw work traces into proposed edges, the Blackboard bridge,
+`ask`/`digest`, and idempotent ingestion. Tested (37 cases) and adversarially
+reviewed. Roadmap: richer distillation rules, signed/tamper-evident evidence,
+and a hosted multi-project mode.
 
 ## License
 

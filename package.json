@@ -1,6 +1,6 @@
 {
   "name": "octopus-experience",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Project Memory — organizational, causal memory for AI teams. Ask why, not just what.",
   "license": "AGPL-3.0-or-later",
   "author": "Octoryn",
@@ -48,6 +48,7 @@
     "cli": "tsx src/cli.ts",
     "mcp": "tsx src/mcp.ts",
     "demo": "tsx scripts/demo.ts",
+    "pipeline": "tsx scripts/pipeline.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "prepublishOnly": "npm run build"

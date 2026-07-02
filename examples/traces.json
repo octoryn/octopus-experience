@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "commit",
+    "ref": "9f2a1c",
+    "title": "shard the KV cache lock",
+    "actor": "claude-session-7",
+    "mentions": ["KV cache lock contention"]
+  },
+  {
+    "kind": "benchmark",
+    "ref": "bench-throughput-88",
+    "title": "throughput 1.0x -> 1.8x, no contention",
+    "outcome": "pass",
+    "mentions": ["Shard the KV cache lock"]
+  },
+  {
+    "kind": "test",
+    "ref": "regress-441",
+    "title": "disabling the cache made p99 worse, not better",
+    "outcome": "fail",
+    "mentions": ["Disable the cache"]
+  }
+]

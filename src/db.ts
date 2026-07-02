@@ -37,6 +37,7 @@ export class Store {
         body          TEXT NOT NULL DEFAULT '',
         created_at    INTEGER NOT NULL,
         actor         TEXT,
+        external_key  TEXT UNIQUE,
         last_verified INTEGER,
         evidence_kind TEXT,
         ref           TEXT
@@ -65,7 +66,9 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
       CREATE INDEX IF NOT EXISTS idx_edges_to   ON edges(to_id);
+      CREATE INDEX IF NOT EXISTS idx_edges_tuple ON edges(from_id, to_id, relation);
       CREATE INDEX IF NOT EXISTS idx_links_tgt  ON evidence_links(target_id);
+      CREATE INDEX IF NOT EXISTS idx_nodes_extkey ON nodes(external_key);
     `);
   }
 
@@ -89,8 +92,8 @@ export class Store {
   insertNode(n: MemoryNode): void {
     this.db
       .prepare(
-        `INSERT INTO nodes (id,type,title,body,created_at,actor,last_verified,evidence_kind,ref)
-         VALUES (@id,@type,@title,@body,@createdAt,@actor,@lastVerified,@evidenceKind,@ref)`,
+        `INSERT INTO nodes (id,type,title,body,created_at,actor,external_key,last_verified,evidence_kind,ref)
+         VALUES (@id,@type,@title,@body,@createdAt,@actor,@externalKey,@lastVerified,@evidenceKind,@ref)`,
       )
       .run({
         id: n.id,
@@ -99,10 +102,38 @@ export class Store {
         body: n.body,
         createdAt: n.createdAt,
         actor: n.actor ?? null,
+        externalKey: n.externalKey ?? null,
         lastVerified: n.lastVerified ?? null,
         evidenceKind: n.evidenceKind ?? null,
         ref: n.ref ?? null,
       });
+  }
+
+  getNodeByExternalKey(externalKey: string): MemoryNode | undefined {
+    const r = this.db
+      .prepare(`SELECT * FROM nodes WHERE external_key = ?`)
+      .get(externalKey) as NodeRow | undefined;
+    return r ? rowToNode(r) : undefined;
+  }
+
+  findEdge(from: string, to: string, relation: string): MemoryEdge | undefined {
+    const r = this.db
+      .prepare(`SELECT * FROM edges WHERE from_id=? AND to_id=? AND relation=?`)
+      .get(from, to, relation) as EdgeRow | undefined;
+    return r ? rowToEdge(r) : undefined;
+  }
+
+  findLink(
+    evidenceId: string,
+    targetId: string,
+    stance: string,
+  ): EvidenceLink | undefined {
+    const r = this.db
+      .prepare(
+        `SELECT * FROM evidence_links WHERE evidence_id=? AND target_id=? AND stance=?`,
+      )
+      .get(evidenceId, targetId, stance) as LinkRow | undefined;
+    return r ? rowToLink(r) : undefined;
   }
 
   insertEdge(e: MemoryEdge): void {
@@ -227,6 +258,7 @@ interface NodeRow {
   body: string;
   created_at: number;
   actor: string | null;
+  external_key: string | null;
   last_verified: number | null;
   evidence_kind: EvidenceKind | null;
   ref: string | null;
@@ -262,6 +294,7 @@ function rowToNode(r: NodeRow): MemoryNode {
     body: r.body,
     createdAt: r.created_at,
     actor: r.actor ?? undefined,
+    externalKey: r.external_key ?? undefined,
     lastVerified: r.last_verified ?? undefined,
     evidenceKind: r.evidence_kind ?? undefined,
     ref: r.ref ?? undefined,

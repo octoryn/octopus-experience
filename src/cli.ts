@@ -2,12 +2,13 @@
 /** octomem — a thin human-facing CLI over Project Memory. */
 import { Command } from "commander";
 import { ProjectMemory } from "./memory.js";
+import { ingestBlackboard } from "./adapters/blackboard.js";
 
 const program = new Command();
 program
   .name("octomem")
   .description("Project Memory — ask why, not just what")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("why <target>")
@@ -44,6 +45,46 @@ program
     const m = new ProjectMemory();
     try {
       console.log(`${edge} -> [${m.verify(edge)}]`);
+    } finally {
+      m.close();
+    }
+  });
+
+program
+  .command("ask <query>")
+  .description("ranked recall for a topic, annotated with current trust")
+  .action((query: string) => {
+    const m = new ProjectMemory();
+    try {
+      console.log(m.askText(query));
+    } finally {
+      m.close();
+    }
+  });
+
+program
+  .command("digest <topic>")
+  .description("a lessons brief: trusted, aging, superseded, and refuted dead ends")
+  .action((topic: string) => {
+    const m = new ProjectMemory();
+    try {
+      console.log(m.digestText(topic));
+    } finally {
+      m.close();
+    }
+  });
+
+program
+  .command("ingest-blackboard <path>")
+  .description("distill an octopus-blackboard SQLite database into causal memory")
+  .action((path: string) => {
+    const m = new ProjectMemory();
+    try {
+      const r = ingestBlackboard(m, path);
+      console.log(
+        `ingested — issues:${r.issues} tasks:${r.tasks} decisions:${r.decisions} edges:${r.edges} evidence:${r.evidence}`,
+      );
+      for (const line of r.log) console.log(`  ${line}`);
     } finally {
       m.close();
     }

@@ -14,6 +14,15 @@ import {
   type LifecycleOptions,
 } from "./lifecycle.js";
 import { reconstructWhy, renderWhy, type WhyOptions, type WhyResult } from "./why.js";
+import { Distiller, type DistillResult, type Trace } from "./distill.js";
+import {
+  ask as runAsk,
+  digest as runDigest,
+  renderAsk,
+  renderDigest,
+  type AskResult,
+  type Digest,
+} from "./query.js";
 import type {
   EdgeRelation,
   EdgeState,
@@ -32,6 +41,8 @@ export interface NodeInput {
   title: string;
   body?: string;
   actor?: string;
+  /** stable source identity; re-using it returns the existing node (idempotent) */
+  externalKey?: string;
   /** evidence-only */
   evidenceKind?: EvidenceKind;
   ref?: string;
@@ -101,6 +112,11 @@ export class ProjectMemory {
     if (type === "evidence" && !input.evidenceKind) {
       throw new Error("evidence nodes require an evidenceKind");
     }
+    // Idempotency: a known source record reuses its node.
+    if (input.externalKey) {
+      const existing = this.store.getNodeByExternalKey(input.externalKey);
+      if (existing) return existing;
+    }
     const prefix = ID_PREFIX[type];
     const node: MemoryNode = {
       id: this.store.nextNodeId(prefix, type),
@@ -109,6 +125,7 @@ export class ProjectMemory {
       body: input.body ?? "",
       createdAt: at ?? this.clock(),
       actor: input.actor,
+      externalKey: input.externalKey,
       evidenceKind: input.evidenceKind,
       ref: input.ref,
       // a decision is a prescription: it starts life "verified now"
@@ -126,6 +143,10 @@ export class ProjectMemory {
         "edges connect issue/decision/task nodes; attach evidence with addEvidence",
       );
     }
+    // Idempotency: one edge per (from, to, relation). Re-proposing it reuses the
+    // existing edge; new evidence just attaches to it.
+    const dup = this.store.findEdge(from.id, to.id, input.relation);
+    if (dup) return dup;
     const now = at ?? this.clock();
     const edge: MemoryEdge = {
       id: this.store.nextId("edges", "EDGE"),
@@ -154,18 +175,24 @@ export class ProjectMemory {
         ? this.mustEdge(input.target).id
         : this.mustNode(input.target).id;
     const now = at ?? this.clock();
+    const stance = input.stance ?? "supports";
+    // Idempotency: the same evidence/target/stance link is recorded once.
+    if (this.store.findLink(evNode.id, targetId, stance)) {
+      return targetType === "edge" ? this.edgeState(targetId, now) : undefined;
+    }
     this.store.insertLink({
       id: this.store.nextId("evidence_links", "LINK"),
       evidenceId: evNode.id,
       targetType,
       targetId,
-      stance: input.stance ?? "supports",
+      stance,
       actor: input.actor,
       createdAt: now,
     });
-    // Fresh supporting evidence re-verifies the edge (resets decay clock).
-    if (targetType === "edge" && (input.stance ?? "supports") === "supports") {
-      this.store.touchEdgeVerified(targetId, now);
+    // Fresh supporting evidence re-verifies a prescription (resets decay clock).
+    if (targetType === "edge" && stance === "supports") {
+      const edge = this.store.getEdge(targetId);
+      if (edge && isPrescriptive(edge)) this.store.touchEdgeVerified(targetId, now);
     }
     return targetType === "edge" ? this.edgeState(targetId, now) : undefined;
   }
@@ -293,12 +320,64 @@ export class ProjectMemory {
     return renderWhy(this.why(target, opts));
   }
 
+  /** Distill raw observed traces into proposed nodes/edges/evidence. */
+  distill(traces: Trace[]): DistillResult {
+    return new Distiller(this).run(traces);
+  }
+
+  /** Ranked recall across the graph, each hit annotated with its trust state. */
+  ask(query: string, now?: number): AskResult {
+    return runAsk(this, query, now);
+  }
+
+  askText(query: string, now?: number): string {
+    return renderAsk(runAsk(this, query, now));
+  }
+
+  /** A lessons brief on a topic — trusted, aging, superseded, and refuted dead ends. */
+  digest(topic: string, now?: number): Digest {
+    return runDigest(this, topic, now);
+  }
+
+  digestText(topic: string, now?: number): string {
+    return renderDigest(runDigest(this, topic, now));
+  }
+
   search(query: string, type?: NodeType): MemoryNode[] {
     return this.store.searchNodes(query, type);
   }
 
   getNode(id: string): MemoryNode | undefined {
     return this.store.getNode(id);
+  }
+
+  getNodeByExternalKey(externalKey: string): MemoryNode | undefined {
+    return this.store.getNodeByExternalKey(externalKey);
+  }
+
+  outgoingEdges(nodeId: string, relation?: string): MemoryEdge[] {
+    return this.store
+      .edgesTouching(nodeId)
+      .filter((e) => e.from === nodeId && (!relation || e.relation === relation));
+  }
+
+  incomingEdges(nodeId: string, relation?: string): MemoryEdge[] {
+    return this.store
+      .edgesTouching(nodeId)
+      .filter((e) => e.to === nodeId && (!relation || e.relation === relation));
+  }
+
+  allEdgeViews(now?: number): EdgeView[] {
+    return this.store.allEdges().map((e) => this.edgeView(e.id, now));
+  }
+
+  /** Whether an identical evidence link already exists (for idempotent counting). */
+  hasEvidenceLink(
+    evidenceId: string,
+    targetId: string,
+    stance: EvidenceStance = "supports",
+  ): boolean {
+    return Boolean(this.store.findLink(evidenceId, targetId, stance));
   }
 
   isPrescriptive(edgeId: string): boolean {
