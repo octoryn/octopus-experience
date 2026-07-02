@@ -1,0 +1,71 @@
+{
+  "name": "octopus-experience",
+  "version": "0.1.0",
+  "description": "Project Memory — organizational, causal memory for AI teams. Ask why, not just what.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Octoryn",
+  "type": "module",
+  "keywords": [
+    "ai-agents",
+    "mcp",
+    "project-memory",
+    "organizational-memory",
+    "causal-memory",
+    "provenance",
+    "agent-os",
+    "local-first",
+    "sqlite"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/octoryn/octopus-experience.git"
+  },
+  "homepage": "https://github.com/octoryn/octopus-experience#readme",
+  "bugs": {
+    "url": "https://github.com/octoryn/octopus-experience/issues"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "octomem": "./dist/cli.js",
+    "octopus-experience-mcp": "./dist/mcp.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cli": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp.ts",
+    "demo": "tsx scripts/demo.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1",
+    "commander": "^15.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
