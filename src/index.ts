@@ -24,6 +24,20 @@ export type { InterpretResult, InterpretOptions } from "./distill.js";
 export { ask, renderAsk, digest, renderDigest } from "./query.js";
 export type { AskResult, AskHit, Digest } from "./query.js";
 export {
+  runEval,
+  runScenario,
+  renderEvalReport,
+  REFERENCE_SCENARIOS,
+} from "./eval.js";
+export type {
+  Scenario,
+  ScenarioStep,
+  EdgeExpectation,
+  ScenarioResult,
+  ExpectationResult,
+  EvalReport,
+} from "./eval.js";
+export {
   PROTOCOL_VERSION,
   canonicalize,
   hashContent,

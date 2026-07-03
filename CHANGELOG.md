@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-07-03
+
+### Added
+
+- **Defensible-reasoning eval** (`octopus-experience/eval`) — a causal-provenance
+  evaluation that measures what recall benchmarks (LongMemEval, etc.) cannot:
+  given facts + evidence, does the system promote the right causal edges to
+  `trusted`, mark refuted dead-ends, decay stale ones, and — crucially — NOT
+  re-walk a refuted dead-end (negative knowledge)? Ships a declarative `Scenario`
+  format with `runEval` / `runScenario` / `renderEvalReport`, 4 reference
+  scenarios (`REFERENCE_SCENARIOS`), and `docs/EVAL.md`. Exported from the new
+  `octopus-experience/eval` entry point.
+
 ## [0.5.1]
 
 ### Added / changed

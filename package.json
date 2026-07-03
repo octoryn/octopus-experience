@@ -1,6 +1,6 @@
 {
   "name": "octopus-experience",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Project Memory — organizational, causal memory for AI teams. Ask why, not just what.",
   "license": "Apache-2.0",
   "author": "Ran Tao <ran@octopusos.ai>",
@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./eval": {
+      "types": "./dist/eval.d.ts",
+      "import": "./dist/eval.js"
     },
     "./package.json": "./package.json"
   },
