@@ -58,7 +58,9 @@
     "pipeline": "tsx scripts/pipeline.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "verify": "npm run typecheck && npm test && npm run build",
+    "release:smoke": "npm pack --dry-run",
+    "prepublishOnly": "npm run verify && npm run release:smoke"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

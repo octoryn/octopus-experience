@@ -38,9 +38,9 @@ console.log(m.digestText("cache"));
 console.log(m.explain("Shard the KV cache lock"));
 ```
 
-## Ingesting a signed Provenance Bundle
+## Ingesting a signed Events Bundle
 
-The only cross-project entry point is the [`provenance/0` protocol](../docs/protocol.md).
+The only cross-project entry point is the [`events/0` protocol](../docs/protocol.md).
 A producer signs a bundle; Project Memory verifies and ingests it — it never reads
 the producer's storage.
 
@@ -74,6 +74,6 @@ node dist/cli.js ingest-bundle bundle.json   # rejects unsigned by default
 node dist/cli.js digest "batch"
 ```
 
-Blackboard is one producer among many: it emits `provenance/0` bundles via its own
+Blackboard is one producer among many: it emits `events/0` bundles via its own
 `blackboard export` command — Project Memory has no knowledge of Blackboard's
 schema or code.
